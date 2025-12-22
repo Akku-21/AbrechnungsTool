@@ -90,7 +90,8 @@ class PDFGenerator:
                 'cost_category': inv.cost_category,
                 'total_amount': inv.total_amount,
                 'allocation_percentage': allocation,
-                'allocated_amount': inv.total_amount * Decimal(str(allocation))
+                'allocated_amount': inv.total_amount * Decimal(str(allocation)),
+                'document_id': str(inv.document_id) if inv.document_id else None
             })
 
         # HTML rendern
@@ -132,7 +133,7 @@ class PDFGenerator:
         main_pdf_bytes: bytes,
         attachments: List[Document]
     ) -> bytes:
-        """Füge Anhänge zum Haupt-PDF hinzu"""
+        """Füge Anhänge zum Haupt-PDF hinzu mit internen Links"""
         writer = PdfWriter()
 
         # Haupt-PDF hinzufügen
@@ -140,18 +141,41 @@ class PDFGenerator:
         for page in main_reader.pages:
             writer.add_page(page)
 
-        # Anhänge hinzufügen
+        # Aktuelle Seitenzahl merken (0-basiert)
+        current_page = len(writer.pages)
+
+        # Anhänge hinzufügen und Named Destinations für interne Links speichern
+        named_destinations = []  # (name, page_index) Paare
+
         for doc in attachments:
             try:
                 attachment_pdf = self._document_to_pdf(doc)
                 if attachment_pdf:
                     attachment_reader = PdfReader(io.BytesIO(attachment_pdf))
+
+                    # Merken, wo dieses Dokument startet (für Named Destination)
+                    doc_start_page = current_page
+
+                    # Seiten hinzufügen
                     for page in attachment_reader.pages:
                         writer.add_page(page)
+
+                    # Named Destination für später speichern
+                    named_destinations.append((f"doc-{doc.id}", doc_start_page))
+
+                    # Seitenzahl aktualisieren
+                    current_page += len(attachment_reader.pages)
             except Exception as e:
                 # Bei Fehler überspringen, aber loggen
                 print(f"Fehler beim Hinzufügen von Anhang {doc.original_filename}: {e}")
                 continue
+
+        # Named Destinations hinzufügen (nachdem alle Seiten da sind)
+        for name, page_index in named_destinations:
+            try:
+                writer.add_named_destination(name, page_index)
+            except Exception as e:
+                print(f"Fehler beim Erstellen von Named Destination {name}: {e}")
 
         # Zusammengeführtes PDF ausgeben
         output = io.BytesIO()

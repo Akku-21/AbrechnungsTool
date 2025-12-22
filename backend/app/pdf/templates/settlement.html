@@ -171,6 +171,16 @@
             color: #888;
             margin-top: 3mm;
         }
+
+        .document-link {
+            color: #0066cc;
+            text-decoration: underline;
+            font-size: 8pt;
+        }
+
+        .document-link:hover {
+            color: #004499;
+        }
     </style>
 </head>
 <body>
@@ -201,6 +211,7 @@
                     <th class="amount">Rechnungsbetrag</th>
                     <th class="percentage">Anteil</th>
                     <th class="amount">Umlagefähig</th>
+                    <th>Beleg</th>
                 </tr>
             </thead>
             <tbody>
@@ -214,12 +225,19 @@
                         {{ invoice.allocation_percentage|percentage }}
                     </td>
                     <td class="amount">{{ invoice.allocated_amount|euro }}</td>
+                    <td>
+                        {% if invoice.document_id %}
+                            <a href="#doc-{{ invoice.document_id }}" class="document-link">→ Anhang</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr class="total">
-                    <td colspan="5"><strong>Gesamtsumme umlagefähige Kosten</strong></td>
+                    <td colspan="6"><strong>Gesamtsumme umlagefähige Kosten</strong></td>
                     <td class="amount"><strong>{{ invoices|sum(attribute='allocated_amount')|euro }}</strong></td>
                 </tr>
             </tfoot>
