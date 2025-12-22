@@ -184,6 +184,14 @@
     </style>
 </head>
 <body>
+    {% if landlord.name %}
+    <div class="sender" style="font-size: 9pt; margin-bottom: 10mm;">
+        <p style="margin: 0;"><strong>{{ landlord.name }}</strong></p>
+        {% if landlord.street %}<p style="margin: 0;">{{ landlord.street }}</p>{% endif %}
+        {% if landlord.postal_code or landlord.city %}<p style="margin: 0;">{{ landlord.postal_code }} {{ landlord.city }}</p>{% endif %}
+    </div>
+    {% endif %}
+
     <header class="header">
         <h1>Betriebs- und Nebenkostenabrechnung</h1>
         <p class="period">

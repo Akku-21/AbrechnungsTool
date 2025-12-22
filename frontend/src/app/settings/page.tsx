@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
-import { Settings, Shield, Building2, Loader2, Check } from 'lucide-react'
+import { Shield, Building2, Loader2, Check } from 'lucide-react'
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
 
 export default function SettingsPage() {
@@ -19,10 +19,6 @@ export default function SettingsPage() {
     company_city: '',
   })
 
-  const [allocationForm, setAllocationForm] = useState({
-    default_allocation_percentage: '100',
-  })
-
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -33,20 +29,11 @@ export default function SettingsPage() {
         company_postal_code: settings.company_postal_code,
         company_city: settings.company_city,
       })
-      setAllocationForm({
-        default_allocation_percentage: settings.default_allocation_percentage,
-      })
     }
   }, [settings])
 
   const handleSaveCompany = async () => {
     await updateSettings.mutateAsync(companyForm)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  const handleSaveAllocation = async () => {
-    await updateSettings.mutateAsync(allocationForm)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -129,47 +116,6 @@ export default function SettingsPage() {
             </div>
             <Button
               onClick={handleSaveCompany}
-              disabled={updateSettings.isPending}
-            >
-              {updateSettings.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              Speichern
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Standard-Umlage */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Settings className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <CardTitle>Kostenverteilung</CardTitle>
-                <CardDescription>Standardwerte für neue Rechnungen</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="max-w-xs space-y-2">
-              <Label htmlFor="default_allocation">Standard-Umlageanteil (%)</Label>
-              <Input
-                id="default_allocation"
-                type="number"
-                min="0"
-                max="100"
-                value={allocationForm.default_allocation_percentage}
-                onChange={(e) => setAllocationForm({ default_allocation_percentage: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Dieser Wert wird für neue Rechnungen vorausgefüllt.
-                100% bedeutet, dass die gesamten Kosten auf Mieter umgelegt werden.
-              </p>
-            </div>
-            <Button
-              onClick={handleSaveAllocation}
               disabled={updateSettings.isPending}
             >
               {updateSettings.isPending ? (

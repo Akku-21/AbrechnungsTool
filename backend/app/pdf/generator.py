@@ -18,9 +18,16 @@ from app.models.settlement import Settlement
 from app.models.settlement_result import SettlementResult, SettlementCostBreakdown
 from app.models.document import Document
 from app.models.invoice import Invoice
+from app.models.settings import Settings
 from app.models.enums import COST_CATEGORY_LABELS
 from app.config import settings
 from app.services.signing_service import create_signing_service
+
+
+def get_setting(db: Session, key: str, default: str = "") -> str:
+    """Hole einen Einstellungswert aus der DB"""
+    setting = db.query(Settings).filter(Settings.key == key).first()
+    return setting.value if setting else default
 
 
 class PDFGenerator:
@@ -108,6 +115,14 @@ class PDFGenerator:
             Document.include_in_export == True
         ).order_by(Document.upload_date).all()
 
+        # Vermieter-Daten aus Einstellungen laden
+        landlord = {
+            'name': get_setting(db, 'company_name'),
+            'street': get_setting(db, 'company_street'),
+            'postal_code': get_setting(db, 'company_postal_code'),
+            'city': get_setting(db, 'company_city'),
+        }
+
         # HTML rendern (mit Platzhaltern für Anhänge)
         html_content = template.render(
             settlement=settlement,
@@ -116,7 +131,8 @@ class PDFGenerator:
             invoices=invoices_data,
             cost_category_labels=COST_CATEGORY_LABELS,
             generated_date=date.today(),
-            attachments=attachments  # Für Link-Platzhalter
+            attachments=attachments,  # Für Link-Platzhalter
+            landlord=landlord
         )
 
         # CSS laden
