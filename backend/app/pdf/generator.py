@@ -42,6 +42,7 @@ class PDFGenerator:
         self.env.filters['german_date'] = self._format_german_date
         self.env.filters['percentage'] = self._format_percentage
         self.env.filters['area'] = self._format_area
+        self.env.filters['round_up_even'] = self._round_up_even
 
         # Signing Service initialisieren (falls konfiguriert)
         self.signing_service = create_signing_service(
@@ -270,3 +271,16 @@ class PDFGenerator:
             return "0,00 m²"
         formatted = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return f"{formatted} m²"
+
+    @staticmethod
+    def _round_up_even(value) -> int:
+        """Runde auf zur nächsten geraden Zahl"""
+        import math
+        if value is None:
+            return 0
+        # Aufrunden zur nächsten ganzen Zahl
+        rounded = math.ceil(float(value))
+        # Falls ungerade, noch 1 addieren
+        if rounded % 2 != 0:
+            rounded += 1
+        return rounded
