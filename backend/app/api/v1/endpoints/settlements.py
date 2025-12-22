@@ -110,7 +110,7 @@ def delete_settlement(
     settlement_id: UUID,
     db: Session = Depends(get_db)
 ):
-    """Abrechnung löschen (nur Entwürfe)"""
+    """Abrechnung löschen"""
     settlement_obj = db.query(Settlement).filter(Settlement.id == settlement_id).first()
     if not settlement_obj:
         raise HTTPException(
@@ -118,10 +118,10 @@ def delete_settlement(
             detail="Abrechnung nicht gefunden"
         )
 
-    if settlement_obj.status != SettlementStatus.DRAFT:
+    if settlement_obj.status == SettlementStatus.FINALIZED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nur Entwürfe können gelöscht werden"
+            detail="Finalisierte Abrechnungen können nicht gelöscht werden"
         )
 
     db.delete(settlement_obj)
