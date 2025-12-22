@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Nebenkostenabrechnung {{ settlement.year }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #333;
+        }
+
+        h1 {
+            font-size: 18pt;
+            color: #1a1a1a;
+            margin-bottom: 5mm;
+            border-bottom: 2px solid #333;
+            padding-bottom: 3mm;
+        }
+
+        h2 {
+            font-size: 14pt;
+            color: #1a1a1a;
+            margin-top: 8mm;
+            margin-bottom: 4mm;
+        }
+
+        h3 {
+            font-size: 12pt;
+            color: #333;
+            margin-top: 6mm;
+            margin-bottom: 3mm;
+        }
+
+        .header {
+            margin-bottom: 10mm;
+        }
+
+        .period {
+            font-size: 12pt;
+            color: #666;
+            margin-bottom: 8mm;
+        }
+
+        .property-info {
+            background: #f5f5f5;
+            padding: 4mm;
+            border-radius: 2mm;
+            margin-bottom: 8mm;
+        }
+
+        .property-info p {
+            margin: 1mm 0;
+        }
+
+        .invoices-section {
+            margin-bottom: 10mm;
+        }
+
+        .invoices-section h2 {
+            font-size: 12pt;
+            margin-bottom: 4mm;
+        }
+
+        .invoices-section table {
+            font-size: 9pt;
+        }
+
+        .highlight {
+            color: #c00;
+            font-weight: bold;
+        }
+
+        .unit-section {
+            page-break-inside: avoid;
+            margin-bottom: 10mm;
+            border: 1px solid #ddd;
+            padding: 5mm;
+            border-radius: 2mm;
+        }
+
+        .tenant-info {
+            background: #f9f9f9;
+            padding: 3mm;
+            margin-bottom: 5mm;
+            border-radius: 1mm;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 4mm 0;
+        }
+
+        th, td {
+            padding: 2mm 3mm;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f0f0f0;
+            font-weight: bold;
+            font-size: 9pt;
+        }
+
+        .amount {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+
+        .percentage {
+            text-align: center;
+        }
+
+        tfoot tr {
+            font-weight: bold;
+        }
+
+        tfoot tr.total {
+            background: #f0f0f0;
+        }
+
+        tfoot tr.balance {
+            font-size: 11pt;
+        }
+
+        .nachzahlung {
+            color: #c00;
+        }
+
+        .guthaben {
+            color: #080;
+        }
+
+        .summary-box {
+            background: #f5f5f5;
+            border: 2px solid #333;
+            padding: 5mm;
+            margin-top: 5mm;
+            text-align: center;
+        }
+
+        .summary-box .label {
+            font-size: 10pt;
+            color: #666;
+        }
+
+        .summary-box .value {
+            font-size: 16pt;
+            font-weight: bold;
+            margin-top: 2mm;
+        }
+
+        footer {
+            margin-top: 15mm;
+            padding-top: 5mm;
+            border-top: 1px solid #ccc;
+            font-size: 8pt;
+            color: #666;
+        }
+
+        .legal {
+            font-size: 7pt;
+            color: #888;
+            margin-top: 3mm;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Betriebs- und Nebenkostenabrechnung</h1>
+        <p class="period">
+            Abrechnungszeitraum: {{ settlement.period_start|german_date }} bis {{ settlement.period_end|german_date }}
+        </p>
+    </header>
+
+    <section class="property-info">
+        <h2>Objekt</h2>
+        <p><strong>{{ property.name }}</strong></p>
+        <p>{{ property.street }} {{ property.house_number }}</p>
+        <p>{{ property.postal_code }} {{ property.city }}</p>
+        <p>Gesamtwohnfläche: {{ property.total_area_sqm|area }}</p>
+    </section>
+
+    {% if invoices %}
+    <section class="invoices-section">
+        <h2>Belegunterlagen / Rechnungsübersicht</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Kostenart</th>
+                    <th>Anbieter</th>
+                    <th>Datum</th>
+                    <th class="amount">Rechnungsbetrag</th>
+                    <th class="percentage">Anteil</th>
+                    <th class="amount">Umlagefähig</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                <tr>
+                    <td>{{ cost_category_labels[invoice.cost_category] }}</td>
+                    <td>{{ invoice.vendor_name }}</td>
+                    <td>{{ invoice.invoice_date|german_date if invoice.invoice_date else '-' }}</td>
+                    <td class="amount">{{ invoice.total_amount|euro }}</td>
+                    <td class="percentage {% if invoice.allocation_percentage < 1 %}highlight{% endif %}">
+                        {{ invoice.allocation_percentage|percentage }}
+                    </td>
+                    <td class="amount">{{ invoice.allocated_amount|euro }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="total">
+                    <td colspan="5"><strong>Gesamtsumme umlagefähige Kosten</strong></td>
+                    <td class="amount"><strong>{{ invoices|sum(attribute='allocated_amount')|euro }}</strong></td>
+                </tr>
+            </tfoot>
+        </table>
+    </section>
+    {% endif %}
+
+    {% for result in results %}
+    <section class="unit-section">
+        <h2>{{ result.unit.designation }}</h2>
+
+        <div class="tenant-info">
+            <h3>Mieter</h3>
+            <p><strong>{{ result.tenant.full_name }}</strong></p>
+            <p>Wohnfläche: {{ result.unit.area_sqm|area }}</p>
+            <p>Abrechnungstage: {{ result.occupancy_days }} Tage</p>
+            {% if result.tenant.monthly_prepayment %}
+            <p>Monatliche Vorauszahlung: {{ result.tenant.monthly_prepayment|euro }}</p>
+            {% endif %}
+        </div>
+
+        <h3>Kostenaufstellung</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Kostenart</th>
+                    <th class="amount">Gesamtkosten</th>
+                    <th class="percentage">Ihr Anteil</th>
+                    <th class="amount">Betrag</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for breakdown in result.breakdowns %}
+                <tr>
+                    <td>{{ cost_category_labels[breakdown.cost_category] }}</td>
+                    <td class="amount">{{ breakdown.total_property_cost|euro }}</td>
+                    <td class="percentage">{{ breakdown.allocation_percentage|percentage }}</td>
+                    <td class="amount">{{ breakdown.allocated_amount|euro }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="total">
+                    <td colspan="3"><strong>Gesamtbetriebskosten</strong></td>
+                    <td class="amount"><strong>{{ result.total_costs|euro }}</strong></td>
+                </tr>
+                <tr>
+                    <td colspan="3">Geleistete Vorauszahlungen</td>
+                    <td class="amount">{{ result.total_prepayments|euro }}</td>
+                </tr>
+                <tr class="balance {% if result.balance > 0 %}nachzahlung{% else %}guthaben{% endif %}">
+                    <td colspan="3">
+                        <strong>
+                        {% if result.balance > 0 %}
+                            Nachzahlung
+                        {% elif result.balance < 0 %}
+                            Guthaben
+                        {% else %}
+                            Saldo ausgeglichen
+                        {% endif %}
+                        </strong>
+                    </td>
+                    <td class="amount">
+                        <strong>
+                        {% if result.balance >= 0 %}
+                            {{ result.balance|euro }}
+                        {% else %}
+                            {{ (result.balance * -1)|euro }}
+                        {% endif %}
+                        </strong>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="summary-box {% if result.balance > 0 %}nachzahlung{% else %}guthaben{% endif %}">
+            <div class="label">
+                {% if result.balance > 0 %}
+                    Bitte überweisen Sie den Betrag innerhalb von 30 Tagen
+                {% elif result.balance < 0 %}
+                    Das Guthaben wird Ihnen erstattet
+                {% else %}
+                    Keine Zahlung erforderlich
+                {% endif %}
+            </div>
+            <div class="value">
+                {% if result.balance >= 0 %}
+                    {{ result.balance|euro }}
+                {% else %}
+                    {{ (result.balance * -1)|euro }}
+                {% endif %}
+            </div>
+        </div>
+    </section>
+    {% endfor %}
+
+    <footer>
+        <p>Erstellt am: {{ generated_date|german_date }}</p>
+        <p class="legal">
+            Diese Abrechnung erfolgt gemäß § 556 BGB und der Betriebskostenverordnung (BetrKV).
+            Einwendungen gegen diese Abrechnung sind gemäß § 556 Abs. 3 Satz 5 BGB innerhalb
+            von 12 Monaten nach Zugang schriftlich geltend zu machen.
+        </p>
+    </footer>
+</body>
+</html>
