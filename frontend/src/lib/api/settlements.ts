@@ -39,6 +39,11 @@ export const settlementsApi = {
     return response.data
   },
 
+  copy: async (id: string): Promise<Settlement> => {
+    const response = await apiClient.post(`/settlements/${id}/copy`)
+    return response.data
+  },
+
   exportPdf: async (id: string): Promise<Blob> => {
     const response = await apiClient.get(`/settlements/${id}/export/pdf`, {
       responseType: 'blob',

@@ -77,3 +77,14 @@ export function useFinalizeSettlement() {
     },
   })
 }
+
+export function useCopySettlement() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => settlementsApi.copy(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settlements'] })
+    },
+  })
+}

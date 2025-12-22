@@ -183,6 +183,54 @@ def finalize_settlement(
     return settlement_obj
 
 
+@router.post("/{settlement_id}/copy", response_model=SettlementResponse)
+def copy_settlement(
+    settlement_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Korrekturabrechnung erstellen (Kopie einer finalisierten Abrechnung)"""
+    from app.models.invoice import Invoice
+    from app.models.document import Document
+
+    original = db.query(Settlement).filter(Settlement.id == settlement_id).first()
+    if not original:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Abrechnung nicht gefunden"
+        )
+
+    # Neue Abrechnung erstellen
+    new_settlement = Settlement(
+        property_id=original.property_id,
+        period_start=original.period_start,
+        period_end=original.period_end,
+        status=SettlementStatus.DRAFT,
+        notes=f"Korrektur zu Abrechnung vom {original.finalized_at.strftime('%d.%m.%Y') if original.finalized_at else 'N/A'}"
+    )
+    db.add(new_settlement)
+    db.flush()  # Get new ID
+
+    # Rechnungen kopieren (ohne document_id - Dokumente bleiben beim Original)
+    invoices = db.query(Invoice).filter(Invoice.settlement_id == settlement_id).all()
+    for inv in invoices:
+        new_invoice = Invoice(
+            settlement_id=new_settlement.id,
+            document_id=None,  # Dokumente bleiben beim Original
+            vendor_name=inv.vendor_name,
+            invoice_number=inv.invoice_number,
+            invoice_date=inv.invoice_date,
+            total_amount=inv.total_amount,
+            cost_category=inv.cost_category,
+            allocation_percentage=inv.allocation_percentage,
+            notes=inv.notes
+        )
+        db.add(new_invoice)
+
+    db.commit()
+    db.refresh(new_settlement)
+    return new_settlement
+
+
 @router.get("/{settlement_id}/export/pdf")
 def export_settlement_pdf(
     settlement_id: UUID,

@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { useSettlement, useCalculateSettlement, useDeleteSettlement } from '@/hooks/useSettlements'
+import { useSettlement, useCalculateSettlement, useDeleteSettlement, useFinalizeSettlement, useCopySettlement } from '@/hooks/useSettlements'
 import { useProperty } from '@/hooks/useProperties'
 import { useDocuments, useUploadDocument, useDeleteDocument, useProcessDocument, useOCRResult, useUpdateDocument } from '@/hooks/useDocuments'
 import { useInvoices, useCreateInvoice, useDeleteInvoice } from '@/hooks/useInvoices'
@@ -29,6 +29,8 @@ import {
   FileSearch,
   ChevronDown,
   ChevronUp,
+  Lock,
+  Copy,
 } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -91,12 +93,15 @@ export default function SettlementDetailPage({
   const updateDocument = useUpdateDocument()
   const calculateSettlement = useCalculateSettlement()
   const deleteSettlement = useDeleteSettlement()
+  const finalizeSettlement = useFinalizeSettlement()
+  const copySettlement = useCopySettlement()
   const createInvoice = useCreateInvoice()
   const deleteInvoice = useDeleteInvoice()
 
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([])
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [showOcrModal, setShowOcrModal] = useState(false)
@@ -292,6 +297,16 @@ export default function SettlementDetailPage({
     }
   }
 
+  const handleFinalize = async () => {
+    await finalizeSettlement.mutateAsync(id)
+    setShowFinalizeModal(false)
+  }
+
+  const handleCreateCorrection = async () => {
+    const newSettlement = await copySettlement.mutateAsync(id)
+    router.push(`/settlements/${newSettlement.id}`)
+  }
+
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault()
     await createInvoice.mutateAsync(invoiceForm as InvoiceCreate)
@@ -427,6 +442,34 @@ export default function SettlementDetailPage({
             )}
             {isExportingPdf ? 'Exportiere...' : 'PDF Export'}
           </Button>
+          {settlement.status === 'CALCULATED' && (
+            <Button
+              variant="outline"
+              onClick={() => setShowFinalizeModal(true)}
+              disabled={finalizeSettlement.isPending}
+            >
+              {finalizeSettlement.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Lock className="mr-2 h-4 w-4" />
+              )}
+              Finalisieren
+            </Button>
+          )}
+          {settlement.status === 'FINALIZED' && (
+            <Button
+              variant="outline"
+              onClick={handleCreateCorrection}
+              disabled={copySettlement.isPending}
+            >
+              {copySettlement.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
+              )}
+              Korrektur erstellen
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1026,6 +1069,52 @@ export default function SettlementDetailPage({
               <Button variant="outline" onClick={handleCloseOcrModal}>
                 Schließen
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Finalize Modal */}
+      {showFinalizeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowFinalizeModal(false)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-orange-100 rounded-full">
+                  <AlertCircle className="h-6 w-6 text-orange-600" />
+                </div>
+                <h2 className="text-lg font-semibold">Abrechnung finalisieren</h2>
+              </div>
+              <p className="text-gray-600 mb-4">
+                Nach der Finalisierung kann diese Abrechnung nicht mehr bearbeitet oder gelöscht werden.
+              </p>
+              <p className="text-gray-600 mb-6">
+                Falls später Änderungen nötig sind, können Sie eine <strong>Korrekturabrechnung</strong> erstellen.
+              </p>
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFinalizeModal(false)}
+                >
+                  Abbrechen
+                </Button>
+                <Button
+                  onClick={handleFinalize}
+                  disabled={finalizeSettlement.isPending}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  {finalizeSettlement.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Lock className="mr-2 h-4 w-4" />
+                  )}
+                  Finalisieren
+                </Button>
+              </div>
             </div>
           </div>
         </div>
