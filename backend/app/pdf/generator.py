@@ -19,6 +19,8 @@ from app.models.settlement_result import SettlementResult, SettlementCostBreakdo
 from app.models.document import Document
 from app.models.invoice import Invoice
 from app.models.enums import COST_CATEGORY_LABELS
+from app.config import settings
+from app.services.signing_service import create_signing_service
 
 
 class PDFGenerator:
@@ -33,6 +35,12 @@ class PDFGenerator:
         self.env.filters['german_date'] = self._format_german_date
         self.env.filters['percentage'] = self._format_percentage
         self.env.filters['area'] = self._format_area
+
+        # Signing Service initialisieren (falls konfiguriert)
+        self.signing_service = create_signing_service(
+            settings.SIGNING_CERT_PATH,
+            settings.SIGNING_CERT_PASSWORD
+        )
 
     def generate_settlement_pdf(
         self,
@@ -123,11 +131,20 @@ class PDFGenerator:
         else:
             main_pdf_bytes = html.write_pdf()
 
-        if not attachments:
-            return main_pdf_bytes
+        if attachments:
+            pdf_bytes = self._merge_pdfs_with_attachments(main_pdf_bytes, attachments)
+        else:
+            pdf_bytes = main_pdf_bytes
 
-        # PDFs zusammenführen
-        return self._merge_pdfs_with_attachments(main_pdf_bytes, attachments)
+        # Digital signieren (falls konfiguriert)
+        if self.signing_service:
+            period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
+            pdf_bytes = self.signing_service.sign_pdf(
+                pdf_bytes,
+                reason=f"Nebenkostenabrechnung {period_label}"
+            )
+
+        return pdf_bytes
 
     def _merge_pdfs_with_attachments(
         self,

@@ -25,6 +25,8 @@ services:
       - DATABASE_URL=postgresql://nebenkosten:nebenkosten_dev@db:5432/nebenkosten_db
       - UPLOAD_DIR=/app/uploads
       - CORS_ORIGINS=http://localhost:3000
+      - SIGNING_CERT_PATH=/app/certs/settlement.p12
+      - SIGNING_CERT_PASSWORD=dev_password
     volumes:
       - ./backend:/app
       - uploads_data:/app/uploads

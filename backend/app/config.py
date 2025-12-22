@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -17,9 +17,17 @@ class Settings(BaseSettings):
     # OCR
     TESSERACT_CMD: str = "/usr/bin/tesseract"
 
+    # PDF Signing
+    SIGNING_CERT_PATH: Optional[str] = None
+    SIGNING_CERT_PASSWORD: Optional[str] = None
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+
+    @property
+    def signing_enabled(self) -> bool:
+        return bool(self.SIGNING_CERT_PATH and self.SIGNING_CERT_PASSWORD)
 
     class Config:
         env_file = ".env"

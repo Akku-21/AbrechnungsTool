@@ -36,5 +36,10 @@ Thumbs.db
 # Uploads
 uploads/
 
+# Certificates
+certs/
+*.p12
+*.pfx
+
 # Claude
 .claude/
