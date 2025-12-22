@@ -96,6 +96,7 @@ export default function SettlementDetailPage({
 
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([])
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [showOcrModal, setShowOcrModal] = useState(false)
@@ -265,6 +266,7 @@ export default function SettlementDetailPage({
   }
 
   const handleExportPdf = async () => {
+    setIsExportingPdf(true)
     try {
       const blob = await settlementsApi.exportPdf(id)
       const url = window.URL.createObjectURL(blob)
@@ -278,6 +280,8 @@ export default function SettlementDetailPage({
     } catch (error) {
       console.error('PDF Export failed:', error)
       alert('PDF-Export fehlgeschlagen. Bitte zuerst berechnen.')
+    } finally {
+      setIsExportingPdf(false)
     }
   }
 
@@ -414,10 +418,14 @@ export default function SettlementDetailPage({
           </Button>
           <Button
             onClick={handleExportPdf}
-            disabled={settlement.status === 'DRAFT'}
+            disabled={settlement.status === 'DRAFT' || isExportingPdf}
           >
-            <Download className="mr-2 h-4 w-4" />
-            PDF Export
+            {isExportingPdf ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            {isExportingPdf ? 'Exportiere...' : 'PDF Export'}
           </Button>
         </div>
       </div>
