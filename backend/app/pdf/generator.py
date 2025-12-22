@@ -94,14 +94,21 @@ class PDFGenerator:
                 'document_id': str(inv.document_id) if inv.document_id else None
             })
 
-        # HTML rendern
+        # Anhänge laden (für Platzhalter im HTML)
+        attachments = db.query(Document).filter(
+            Document.settlement_id == settlement_id,
+            Document.include_in_export == True
+        ).order_by(Document.upload_date).all()
+
+        # HTML rendern (mit Platzhaltern für Anhänge)
         html_content = template.render(
             settlement=settlement,
             property=property_obj,
             results=results_data,
             invoices=invoices_data,
             cost_category_labels=COST_CATEGORY_LABELS,
-            generated_date=date.today()
+            generated_date=date.today(),
+            attachments=attachments  # Für Link-Platzhalter
         )
 
         # CSS laden
@@ -115,12 +122,6 @@ class PDFGenerator:
             main_pdf_bytes = html.write_pdf(stylesheets=[css])
         else:
             main_pdf_bytes = html.write_pdf()
-
-        # Anhänge hinzufügen (Dokumente mit include_in_export=True)
-        attachments = db.query(Document).filter(
-            Document.settlement_id == settlement_id,
-            Document.include_in_export == True
-        ).order_by(Document.upload_date).all()
 
         if not attachments:
             return main_pdf_bytes
@@ -136,46 +137,45 @@ class PDFGenerator:
         """Füge Anhänge zum Haupt-PDF hinzu mit internen Links"""
         writer = PdfWriter()
 
-        # Haupt-PDF hinzufügen
+        # Haupt-PDF hinzufügen (letzte Seite ist Platzhalter, wird übersprungen)
         main_reader = PdfReader(io.BytesIO(main_pdf_bytes))
-        for page in main_reader.pages:
-            writer.add_page(page)
+        main_page_count = len(main_reader.pages)
 
-        # Aktuelle Seitenzahl merken (0-basiert)
+        # Alle Seiten außer der letzten (Platzhalter-Seite) hinzufügen
+        for i in range(main_page_count - 1):
+            writer.add_page(main_reader.pages[i])
+
+        # Aktuelle Seitenzahl (0-basiert, ohne Platzhalter-Seite)
         current_page = len(writer.pages)
 
-        # Anhänge hinzufügen und Named Destinations für interne Links speichern
-        named_destinations = []  # (name, page_index) Paare
+        # Mapping: doc.id -> Seitenzahl (für Named Destinations)
+        doc_page_mapping = {}
 
+        # Anhänge hinzufügen
         for doc in attachments:
             try:
                 attachment_pdf = self._document_to_pdf(doc)
                 if attachment_pdf:
                     attachment_reader = PdfReader(io.BytesIO(attachment_pdf))
 
-                    # Merken, wo dieses Dokument startet (für Named Destination)
-                    doc_start_page = current_page
+                    # Merken, wo dieses Dokument startet
+                    doc_page_mapping[str(doc.id)] = current_page
 
                     # Seiten hinzufügen
                     for page in attachment_reader.pages:
                         writer.add_page(page)
 
-                    # Named Destination für später speichern
-                    named_destinations.append((f"doc-{doc.id}", doc_start_page))
-
-                    # Seitenzahl aktualisieren
                     current_page += len(attachment_reader.pages)
             except Exception as e:
-                # Bei Fehler überspringen, aber loggen
                 print(f"Fehler beim Hinzufügen von Anhang {doc.original_filename}: {e}")
                 continue
 
-        # Named Destinations hinzufügen (nachdem alle Seiten da sind)
-        for name, page_index in named_destinations:
+        # Named Destinations aktualisieren (überschreiben die Platzhalter-Destinations)
+        for doc_id, page_index in doc_page_mapping.items():
             try:
-                writer.add_named_destination(name, page_index)
+                writer.add_named_destination(f"doc-{doc_id}", page_index)
             except Exception as e:
-                print(f"Fehler beim Erstellen von Named Destination {name}: {e}")
+                print(f"Fehler beim Erstellen von Named Destination doc-{doc_id}: {e}")
 
         # Zusammengeführtes PDF ausgeben
         output = io.BytesIO()

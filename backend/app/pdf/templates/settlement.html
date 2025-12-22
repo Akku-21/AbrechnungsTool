@@ -342,5 +342,14 @@
             von 12 Monaten nach Zugang schriftlich geltend zu machen.
         </p>
     </footer>
+
+    {# Platzhalter-Anker für Anhänge - werden beim PDF-Merge durch echte Seiten ersetzt #}
+    {% if attachments %}
+    <div style="page-break-before: always;">
+        {% for doc in attachments %}
+        <div id="doc-{{ doc.id }}" style="height: 1px;"></div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </body>
 </html>
