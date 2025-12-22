@@ -46,7 +46,9 @@ export function useDeleteSettlement() {
 
   return useMutation({
     mutationFn: (id: string) => settlementsApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      // Remove the deleted settlement from cache instead of refetching
+      queryClient.removeQueries({ queryKey: ['settlements', id] })
       queryClient.invalidateQueries({ queryKey: ['settlements'] })
     },
   })
