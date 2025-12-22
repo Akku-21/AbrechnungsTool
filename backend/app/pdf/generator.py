@@ -232,8 +232,15 @@ class PDFGenerator:
         # Bild zu PDF konvertieren
         if mime_type.startswith('image/'):
             try:
+                # A4 Größe: 210mm x 297mm, mit Rand
+                a4_width = img2pdf.mm_to_pt(210)
+                a4_height = img2pdf.mm_to_pt(297)
+                layout = img2pdf.get_layout_fun(
+                    pagesize=(a4_width, a4_height),
+                    fit=img2pdf.FitMode.into,  # Bild in Seite einpassen
+                )
                 with open(file_path, 'rb') as img_file:
-                    return img2pdf.convert(img_file)
+                    return img2pdf.convert(img_file, layout_fun=layout)
             except Exception as e:
                 print(f"Fehler bei Bildkonvertierung: {e}")
                 return None

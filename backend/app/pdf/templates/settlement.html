@@ -69,8 +69,24 @@
         }
 
         .invoices-section table {
-            font-size: 9pt;
+            font-size: 8pt;
+            table-layout: fixed;
         }
+
+        .invoices-section th,
+        .invoices-section td {
+            padding: 1.5mm 2mm;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .invoices-section .col-category { width: 20%; }
+        .invoices-section .col-vendor { width: 20%; }
+        .invoices-section .col-date { width: 12%; }
+        .invoices-section .col-amount { width: 14%; }
+        .invoices-section .col-percent { width: 8%; }
+        .invoices-section .col-link { width: 6%; }
 
         .highlight {
             color: #c00;
@@ -230,33 +246,33 @@
 
     {% if invoices %}
     <section class="invoices-section">
-        <h2>Belegunterlagen / Rechnungsübersicht</h2>
+        <h2>Rechnungsübersicht</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Kostenart</th>
-                    <th>Anbieter</th>
-                    <th>Datum</th>
-                    <th class="amount">Rechnungsbetrag</th>
-                    <th class="percentage">Anteil</th>
-                    <th class="amount">Umlagefähig</th>
-                    <th>Beleg</th>
+                    <th class="col-category">Kostenart</th>
+                    <th class="col-vendor">Anbieter</th>
+                    <th class="col-date">Datum</th>
+                    <th class="col-amount amount">Betrag</th>
+                    <th class="col-percent percentage">Anteil</th>
+                    <th class="col-amount amount">Umlage</th>
+                    <th class="col-link">Beleg</th>
                 </tr>
             </thead>
             <tbody>
                 {% for invoice in invoices %}
                 <tr>
-                    <td>{{ cost_category_labels[invoice.cost_category] }}</td>
-                    <td>{{ invoice.vendor_name }}</td>
+                    <td title="{{ cost_category_labels[invoice.cost_category] }}">{{ cost_category_labels[invoice.cost_category] }}</td>
+                    <td title="{{ invoice.vendor_name }}">{{ invoice.vendor_name }}</td>
                     <td>{{ invoice.invoice_date|german_date if invoice.invoice_date else '-' }}</td>
                     <td class="amount">{{ invoice.total_amount|euro }}</td>
                     <td class="percentage {% if invoice.allocation_percentage < 1 %}highlight{% endif %}">
-                        {{ invoice.allocation_percentage|percentage }}
+                        {{ (invoice.allocation_percentage * 100)|int }}%
                     </td>
                     <td class="amount">{{ invoice.allocated_amount|euro }}</td>
                     <td>
                         {% if invoice.document_id %}
-                            <a href="#doc-{{ invoice.document_id }}" class="document-link">→ Anhang</a>
+                            <a href="#doc-{{ invoice.document_id }}" class="document-link">S.→</a>
                         {% else %}
                             -
                         {% endif %}
@@ -266,8 +282,9 @@
             </tbody>
             <tfoot>
                 <tr class="total">
-                    <td colspan="6"><strong>Gesamtsumme umlagefähige Kosten</strong></td>
+                    <td colspan="5"><strong>Gesamtsumme</strong></td>
                     <td class="amount"><strong>{{ invoices|sum(attribute='allocated_amount')|euro }}</strong></td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>
