@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import properties, units, tenants, settlements, documents, invoices, manual_entries
+from app.api.v1.endpoints import properties, units, tenants, settlements, documents, invoices, manual_entries, settings
 
 api_router = APIRouter()
 
@@ -11,3 +11,4 @@ api_router.include_router(settlements.router, prefix="/settlements", tags=["Sett
 api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 api_router.include_router(invoices.router, prefix="/invoices", tags=["Invoices"])
 api_router.include_router(manual_entries.router, prefix="/manual-entries", tags=["Manual Entries"])
+api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
