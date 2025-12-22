@@ -139,12 +139,23 @@
             color: #080;
         }
 
+        .summary-boxes {
+            display: flex;
+            gap: 5mm;
+            margin-top: 5mm;
+        }
+
         .summary-box {
+            flex: 1;
             background: #f5f5f5;
             border: 2px solid #333;
             padding: 5mm;
-            margin-top: 5mm;
             text-align: center;
+        }
+
+        .summary-box.new-prepayment {
+            background: #e8f4f8;
+            border-color: #0066cc;
         }
 
         .summary-box .label {
@@ -155,6 +166,16 @@
         .summary-box .value {
             font-size: 16pt;
             font-weight: bold;
+            margin-top: 2mm;
+        }
+
+        .summary-box.new-prepayment .value {
+            color: #0066cc;
+        }
+
+        .summary-box .hint {
+            font-size: 7pt;
+            color: #888;
             margin-top: 2mm;
         }
 
@@ -321,22 +342,36 @@
             </tfoot>
         </table>
 
-        <div class="summary-box {% if result.balance > 0 %}nachzahlung{% else %}guthaben{% endif %}">
-            <div class="label">
-                {% if result.balance > 0 %}
-                    Bitte überweisen Sie den Betrag innerhalb von 30 Tagen
-                {% elif result.balance < 0 %}
-                    Das Guthaben wird Ihnen erstattet
-                {% else %}
-                    Keine Zahlung erforderlich
-                {% endif %}
+        <div class="summary-boxes">
+            <div class="summary-box {% if result.balance > 0 %}nachzahlung{% else %}guthaben{% endif %}">
+                <div class="label">
+                    {% if result.balance > 0 %}
+                        Nachzahlung
+                    {% elif result.balance < 0 %}
+                        Guthaben
+                    {% else %}
+                        Saldo
+                    {% endif %}
+                </div>
+                <div class="value">
+                    {% if result.balance >= 0 %}
+                        {{ result.balance|euro }}
+                    {% else %}
+                        {{ (result.balance * -1)|euro }}
+                    {% endif %}
+                </div>
+                <div class="hint">
+                    {% if result.balance > 0 %}
+                        Bitte innerhalb von 30 Tagen überweisen
+                    {% elif result.balance < 0 %}
+                        Wird Ihnen erstattet
+                    {% endif %}
+                </div>
             </div>
-            <div class="value">
-                {% if result.balance >= 0 %}
-                    {{ result.balance|euro }}
-                {% else %}
-                    {{ (result.balance * -1)|euro }}
-                {% endif %}
+            <div class="summary-box new-prepayment">
+                <div class="label">Neuer monatlicher Abschlag</div>
+                <div class="value">{{ (result.total_costs / 12)|euro }}</div>
+                <div class="hint">Ab dem nächsten Abrechnungszeitraum</div>
             </div>
         </div>
     </section>
