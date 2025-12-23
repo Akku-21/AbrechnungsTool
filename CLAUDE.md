@@ -1,5 +1,12 @@
 # AbrechnungsaBot8000 - Nebenkostenabrechnung
 
+<!-- SYNC: Keep README.md in sync when making major changes to:
+     - Tech stack, project structure, or architecture
+     - Settlement workflow or cost allocation methods
+     - Environment variables or configuration
+     - Quick start instructions or deployment
+-->
+
 German rental property expense settlement system (Betriebskostenabrechnung) for landlords.
 
 ## Tech Stack

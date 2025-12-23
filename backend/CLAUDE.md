@@ -1,5 +1,7 @@
 # Backend - FastAPI Application
 
+<!-- SYNC: Update /README.md if making major changes to backend structure or tech stack -->
+
 Python 3.12 FastAPI backend with SQLAlchemy ORM, OCR processing, and PDF generation.
 
 ## Structure

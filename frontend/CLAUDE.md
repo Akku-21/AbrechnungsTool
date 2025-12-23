@@ -1,5 +1,7 @@
 # Frontend - Next.js Application
 
+<!-- SYNC: Update /README.md if making major changes to frontend structure or tech stack -->
+
 Next.js 15 with React 19, TanStack Query, and Tailwind CSS.
 
 ## Tech Stack
