@@ -16,7 +16,7 @@ LLM_MODEL = "openrouter_model"
 LLM_ENABLED = "llm_correction_enabled"
 
 # Standardwerte
-DEFAULT_LLM_MODEL = "anthropic/claude-3.5-sonnet"
+DEFAULT_LLM_MODEL = "anthropic/claude-sonnet-4.5"
 
 
 @dataclass

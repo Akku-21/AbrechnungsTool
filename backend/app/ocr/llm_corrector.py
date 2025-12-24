@@ -18,9 +18,19 @@ logger = logging.getLogger(__name__)
 
 # Empfohlene Modelle fuer OCR-Korrektur
 RECOMMENDED_MODELS = [
-    {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (empfohlen)"},
-    {"id": "google/gemini-flash-1.5", "name": "Gemini 1.5 Flash (schnell)"},
-    {"id": "meta-llama/llama-3.1-70b-instruct", "name": "Llama 3.1 70B (kostenguenstig)"},
+    # Anthropic Claude
+    {"id": "anthropic/claude-sonnet-4.5", "name": "Claude Sonnet 4.5 (empfohlen)"},
+    {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet"},
+    {"id": "anthropic/claude-3.5-haiku", "name": "Claude 3.5 Haiku (schnell)"},
+    # Google Gemini
+    {"id": "google/gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+    {"id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+    {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash"},
+    # OpenAI GPT
+    {"id": "openai/gpt-4o", "name": "GPT-4o"},
+    {"id": "openai/gpt-4o-mini", "name": "GPT-4o Mini (guenstig)"},
+    # Meta Llama
+    {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B (kostenguenstig)"},
 ]
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
