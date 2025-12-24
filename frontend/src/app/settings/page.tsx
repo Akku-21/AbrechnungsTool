@@ -239,7 +239,7 @@ export default function SettingsPage() {
                 ))}
               </select>
               <p className="text-xs text-muted-foreground">
-                Claude 3.5 Sonnet bietet die beste Qualitaet, Gemini Flash ist am schnellsten und guenstigsten.
+                Claude Sonnet 4.5 bietet die beste Qualitaet, Gemini Flash ist am schnellsten und guenstigsten.
               </p>
             </div>
 
@@ -301,9 +301,11 @@ export default function SettingsPage() {
             <div className="text-xs text-muted-foreground border-t pt-4">
               <p className="font-medium mb-1">Geschaetzte Kosten pro Rechnung:</p>
               <ul className="space-y-0.5">
-                <li>Claude 3.5 Sonnet: ~0,009 USD</li>
-                <li>Gemini 1.5 Flash: ~0,0002 USD</li>
-                <li>Llama 3.1 70B: ~0,0006 USD</li>
+                <li>Claude Sonnet 4.5: ~0,012 USD</li>
+                <li>Claude 3.5 Haiku: ~0,003 USD</li>
+                <li>GPT-4o Mini: ~0,001 USD</li>
+                <li>Gemini 2.5 Flash: ~0,0003 USD</li>
+                <li>Llama 3.3 70B: ~0,0006 USD</li>
               </ul>
             </div>
           </CardContent>

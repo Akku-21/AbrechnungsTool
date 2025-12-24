@@ -71,3 +71,16 @@ export function useProcessDocument() {
     },
   })
 }
+
+export function useReExtractDocument() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => documentsApi.reExtract(id),
+    onSuccess: (data, id) => {
+      // Aktualisiere OCR-Result Cache direkt mit neuen Daten
+      queryClient.setQueryData(['ocr-result', id], data)
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+    },
+  })
+}

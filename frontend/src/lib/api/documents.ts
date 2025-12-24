@@ -42,6 +42,11 @@ export const documentsApi = {
     return response.data
   },
 
+  reExtract: async (id: string): Promise<OCRResult> => {
+    const response = await apiClient.post(`/documents/${id}/re-extract`)
+    return response.data
+  },
+
   downloadUrl: (id: string): string => {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     return `${API_URL}/api/v1/documents/${id}/download`

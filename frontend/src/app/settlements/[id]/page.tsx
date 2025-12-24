@@ -4,7 +4,7 @@ import { use, useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useSettlement, useCalculateSettlement, useDeleteSettlement, useFinalizeSettlement, useCopySettlement } from '@/hooks/useSettlements'
 import { useProperty } from '@/hooks/useProperties'
-import { useDocuments, useUploadDocument, useDeleteDocument, useProcessDocument, useOCRResult, useUpdateDocument } from '@/hooks/useDocuments'
+import { useDocuments, useUploadDocument, useDeleteDocument, useProcessDocument, useOCRResult, useUpdateDocument, useReExtractDocument } from '@/hooks/useDocuments'
 import { useInvoices, useCreateInvoice, useDeleteInvoice } from '@/hooks/useInvoices'
 import { settlementsApi } from '@/lib/api/settlements'
 import { invoicesApi } from '@/lib/api/invoices'
@@ -33,6 +33,7 @@ import {
   ChevronUp,
   Lock,
   Copy,
+  Sparkles,
 } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -95,6 +96,7 @@ export default function SettlementDetailPage({
   const deleteDocument = useDeleteDocument()
   const processDocument = useProcessDocument()
   const updateDocument = useUpdateDocument()
+  const reExtractDocument = useReExtractDocument()
   const calculateSettlement = useCalculateSettlement()
   const deleteSettlement = useDeleteSettlement()
   const finalizeSettlement = useFinalizeSettlement()
@@ -361,6 +363,37 @@ export default function SettlementDetailPage({
     setSelectedDocumentId(documentId)
     setShowOcrModal(true)
     setShowRawText(false)
+  }
+
+  const handleReExtract = async () => {
+    if (!selectedDocumentId) return
+    try {
+      const result = await reExtractDocument.mutateAsync(selectedDocumentId)
+      // Aktualisiere Formular mit neuen Daten
+      if (result.extracted_data) {
+        const data = result.extracted_data
+        setOcrFormData({
+          vendor_name: data.vendor_name || '',
+          invoice_number: data.invoice_number || '',
+          invoice_date: data.invoice_date ? isoToGerman(data.invoice_date) : '',
+          total_amount: data.total_amount ? formatAmountForDisplay(data.total_amount) : '',
+          cost_category: (data.suggested_category as CostCategory) || 'SONSTIGE',
+          allocation_percentage: (defaultAllocation * 100).toFixed(0),
+        })
+      }
+      toast({
+        title: 'LLM-Extraktion erfolgreich',
+        message: 'Die Daten wurden neu extrahiert.',
+        variant: 'success',
+      })
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler'
+      toast({
+        title: 'LLM-Extraktion fehlgeschlagen',
+        message: errorMessage,
+        variant: 'error',
+      })
+    }
   }
 
   const handleCloseOcrModal = () => {
@@ -952,30 +985,45 @@ export default function SettlementDetailPage({
               ) : ocrResult ? (
                 <div className="space-y-6">
                   {/* OCR Info */}
-                  <div className="flex flex-wrap items-center gap-4 text-sm">
-                    {ocrResult.confidence !== undefined && ocrResult.confidence !== null && (
+                  <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+                    <div className="flex flex-wrap items-center gap-4">
+                      {ocrResult.confidence !== undefined && ocrResult.confidence !== null && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">OCR-Konfidenz:</span>
+                          <span className={`font-medium ${
+                            Number(ocrResult.confidence) >= 70 ? 'text-green-600' :
+                            Number(ocrResult.confidence) >= 50 ? 'text-yellow-600' : 'text-red-600'
+                          }`}>
+                            {Number(ocrResult.confidence).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                          </span>
+                        </div>
+                      )}
+                      {ocrResult.engine && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Engine:</span>
+                          <span className="font-medium">{ocrResult.engine}</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">OCR-Konfidenz:</span>
-                        <span className={`font-medium ${
-                          Number(ocrResult.confidence) >= 70 ? 'text-green-600' :
-                          Number(ocrResult.confidence) >= 50 ? 'text-yellow-600' : 'text-red-600'
-                        }`}>
-                          {Number(ocrResult.confidence).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                        <span className="text-muted-foreground">Extraktion:</span>
+                        <span className={`font-medium ${ocrResult.llm_extraction_used ? 'text-green-600' : 'text-gray-600'}`}>
+                          {ocrResult.llm_extraction_used ? 'LLM' : 'Regex'}
                         </span>
                       </div>
-                    )}
-                    {ocrResult.engine && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">Engine:</span>
-                        <span className="font-medium">{ocrResult.engine}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Extraktion:</span>
-                      <span className={`font-medium ${ocrResult.llm_extraction_used ? 'text-green-600' : 'text-gray-600'}`}>
-                        {ocrResult.llm_extraction_used ? 'LLM' : 'Regex'}
-                      </span>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleReExtract}
+                      disabled={reExtractDocument.isPending}
+                    >
+                      {reExtractDocument.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-2 h-4 w-4" />
+                      )}
+                      {reExtractDocument.isPending ? 'Extrahiere...' : 'Neu extrahieren (LLM)'}
+                    </Button>
                   </div>
 
                   {/* LLM Extraction Error Warning */}
