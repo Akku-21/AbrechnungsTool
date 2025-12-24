@@ -3,21 +3,40 @@
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
 import { useProperties, useDeleteProperty } from '@/hooks/useProperties'
+import { useUnits } from '@/hooks/useUnits'
+import { useTenants } from '@/hooks/useTenants'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { Building2, Plus, Trash2, Edit, Eye, Search } from 'lucide-react'
+import { Building2, Plus, Trash2, Edit, Eye, Search, Home } from 'lucide-react'
 import { formatArea } from '@/lib/utils'
 import { fuzzyFilter } from '@/lib/fuzzySearch'
 
 export default function PropertiesPage() {
   const { data, isLoading, error } = useProperties()
+  const { data: allUnits } = useUnits()
+  const { data: allTenants } = useTenants()
   const deleteProperty = useDeleteProperty()
   const { confirm, ConfirmDialog } = useConfirmDialog()
   const [searchTerm, setSearchTerm] = useState('')
 
   const properties = data?.items || []
+
+  // Calculate vacant units (units without active tenant)
+  const vacantUnitsCount = useMemo(() => {
+    if (!allUnits || !allTenants) return 0
+
+    // Get unit IDs that have an active tenant (no move_out_date)
+    const occupiedUnitIds = new Set(
+      allTenants
+        .filter((t) => t.is_active && !t.move_out_date)
+        .map((t) => t.unit_id)
+    )
+
+    // Count units without active tenant
+    return allUnits.filter((u) => !occupiedUnitIds.has(u.id)).length
+  }, [allUnits, allTenants])
 
   const filteredProperties = useMemo(() => {
     if (!searchTerm) return properties
@@ -58,7 +77,6 @@ export default function PropertiesPage() {
   }
 
   const totalUnits = properties.reduce((sum, p) => sum + (p.unit_count || 0), 0)
-  const totalArea = properties.reduce((sum, p) => sum + (p.total_area_sqm || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -100,11 +118,13 @@ export default function PropertiesPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Gesamtfläche
+              Leerstehend
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatArea(totalArea)}</p>
+            <p className={`text-2xl font-bold ${vacantUnitsCount > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+              {vacantUnitsCount}
+            </p>
           </CardContent>
         </Card>
       </div>

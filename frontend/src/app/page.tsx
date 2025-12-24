@@ -6,6 +6,14 @@ import { useSettlements } from '@/hooks/useSettlements'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Building2, FileText, Plus, Home } from 'lucide-react'
+import { SettlementStatus } from '@/types'
+
+const statusLabels: Record<SettlementStatus, string> = {
+  DRAFT: 'Entwurf',
+  CALCULATED: 'Berechnet',
+  FINALIZED: 'Finalisiert',
+  EXPORTED: 'Exportiert',
+}
 
 export default function Dashboard() {
   const { data: propertiesData, isLoading: propertiesLoading } = useProperties()
@@ -112,7 +120,7 @@ export default function Dashboard() {
                       href={`/settlements/${settlement.id}`}
                       className="text-sm text-primary hover:underline"
                     >
-                      {settlement.period_label} ({settlement.status})
+                      {settlement.period_label} ({statusLabels[settlement.status]})
                     </Link>
                   </li>
                 ))}
