@@ -1,19 +1,33 @@
 'use client'
 
 import Link from 'next/link'
+import { useState, useMemo } from 'react'
 import { useProperties, useDeleteProperty } from '@/hooks/useProperties'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { Building2, Plus, Trash2, Edit, Eye } from 'lucide-react'
+import { Building2, Plus, Trash2, Edit, Eye, Search } from 'lucide-react'
 import { formatArea } from '@/lib/utils'
+import { fuzzyFilter } from '@/lib/fuzzySearch'
 
 export default function PropertiesPage() {
   const { data, isLoading, error } = useProperties()
   const deleteProperty = useDeleteProperty()
   const { confirm, ConfirmDialog } = useConfirmDialog()
+  const [searchTerm, setSearchTerm] = useState('')
 
   const properties = data?.items || []
+
+  const filteredProperties = useMemo(() => {
+    if (!searchTerm) return properties
+
+    return fuzzyFilter(
+      properties,
+      ['name', 'full_address', 'city', 'street', 'postal_code'],
+      searchTerm
+    )
+  }, [properties, searchTerm])
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await confirm({
@@ -43,6 +57,9 @@ export default function PropertiesPage() {
     )
   }
 
+  const totalUnits = properties.reduce((sum, p) => sum + (p.unit_count || 0), 0)
+  const totalArea = properties.reduce((sum, p) => sum + (p.total_area_sqm || 0), 0)
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -57,6 +74,61 @@ export default function PropertiesPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Liegenschaften
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{properties.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Wohneinheiten
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{totalUnits}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Gesamtfläche
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{formatArea(totalArea)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search */}
+      {properties.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Suche</CardTitle>
+            <CardDescription>Suchen Sie nach Liegenschaften</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Suche nach Name, Adresse, Stadt, PLZ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {properties.length === 0 ? (
         <Card>
@@ -78,9 +150,26 @@ export default function PropertiesPage() {
             </div>
           </CardContent>
         </Card>
+      ) : filteredProperties.length === 0 ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Search className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-semibold text-gray-900">Keine Ergebnisse</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Keine Liegenschaften gefunden für "{searchTerm}"
+              </p>
+              <div className="mt-4">
+                <Button variant="outline" onClick={() => setSearchTerm('')}>
+                  Suche zurücksetzen
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {properties.map((property) => (
+          {filteredProperties.map((property) => (
             <Card key={property.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
