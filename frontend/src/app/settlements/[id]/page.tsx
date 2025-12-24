@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { useSettlement, useCalculateSettlement, useDeleteSettlement, useFinalizeSettlement, useCopySettlement } from '@/hooks/useSettlements'
+import { useSettlement, useCalculateSettlement, useDeleteSettlement, useFinalizeSettlement, useCopySettlement, useUpdateSettlement } from '@/hooks/useSettlements'
 import { useProperty } from '@/hooks/useProperties'
 import { useDocuments, useUploadDocument, useDeleteDocument, useProcessDocument, useOCRResult, useUpdateDocument, useReExtractDocument } from '@/hooks/useDocuments'
 import { useInvoices, useCreateInvoice, useDeleteInvoice } from '@/hooks/useInvoices'
@@ -34,6 +34,8 @@ import {
   Lock,
   Copy,
   Sparkles,
+  Edit,
+  Save,
 } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -101,6 +103,7 @@ export default function SettlementDetailPage({
   const deleteSettlement = useDeleteSettlement()
   const finalizeSettlement = useFinalizeSettlement()
   const copySettlement = useCopySettlement()
+  const updateSettlement = useUpdateSettlement()
   const createInvoice = useCreateInvoice()
   const deleteInvoice = useDeleteInvoice()
 
@@ -113,6 +116,8 @@ export default function SettlementDetailPage({
   const [showOcrModal, setShowOcrModal] = useState(false)
   const [showRawText, setShowRawText] = useState(false)
   const [defaultAllocation, setDefaultAllocation] = useState<number>(1.0)
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+  const [notesValue, setNotesValue] = useState('')
   const [invoiceForm, setInvoiceForm] = useState<Partial<InvoiceCreate>>({
     settlement_id: id,
     vendor_name: '',
@@ -426,6 +431,24 @@ export default function SettlementDetailPage({
       id: documentId,
       data: { include_in_export: !currentValue }
     })
+  }
+
+  const handleEditNotes = () => {
+    setNotesValue(settlement?.notes || '')
+    setIsEditingNotes(true)
+  }
+
+  const handleSaveNotes = async () => {
+    await updateSettlement.mutateAsync({
+      id,
+      data: { notes: notesValue }
+    })
+    setIsEditingNotes(false)
+  }
+
+  const handleCancelEditNotes = () => {
+    setIsEditingNotes(false)
+    setNotesValue(settlement?.notes || '')
   }
 
   const selectedDocument = documents?.find(d => d.id === selectedDocumentId)
@@ -923,16 +946,49 @@ export default function SettlementDetailPage({
       </Card>
 
       {/* Notes */}
-      {settlement.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Notizen</CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Notizen</CardTitle>
+          {!isEditingNotes && settlement.status !== 'FINALIZED' && (
+            <Button variant="outline" size="sm" onClick={handleEditNotes}>
+              <Edit className="mr-2 h-4 w-4" />
+              Bearbeiten
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {isEditingNotes ? (
+            <div className="space-y-4">
+              <textarea
+                value={notesValue}
+                onChange={(e) => setNotesValue(e.target.value)}
+                className="w-full min-h-[150px] p-3 border rounded-md text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="Notizen zur Abrechnung eingeben..."
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSaveNotes}
+                  disabled={updateSettlement.isPending}
+                >
+                  {updateSettlement.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Speichern
+                </Button>
+                <Button variant="outline" onClick={handleCancelEditNotes}>
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          ) : settlement.notes ? (
             <p className="text-gray-700 whitespace-pre-wrap">{settlement.notes}</p>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <p className="text-gray-400 italic">Keine Notizen vorhanden</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Danger Zone */}
       <Card className="border-red-200">
