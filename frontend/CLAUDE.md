@@ -13,6 +13,7 @@ Next.js 15 with React 19, TanStack Query, and Tailwind CSS.
 - **HTTP**: Axios
 - **Icons**: Lucide React
 - **File Upload**: react-dropzone
+- **Search**: fuse.js (fuzzy search with Levenshtein distance)
 
 ## Project Structure
 
@@ -32,6 +33,7 @@ frontend/
 │   ├── hooks/            # React Query hooks
 │   ├── lib/
 │   │   ├── api/          # API client functions
+│   │   ├── fuzzySearch.ts # Fuzzy search utility (USE THIS!)
 │   │   └── utils.ts      # Utility functions
 │   ├── providers/        # Context providers
 │   └── types/            # TypeScript interfaces
@@ -94,6 +96,50 @@ const { data, isLoading, error } = useProperties()
 2. **New API Call**: Add to `lib/api/`, create hook in `hooks/`
 3. **New Component**: Add to `components/ui/` or feature-specific folder
 4. **New Type**: Add to `types/index.ts`
+5. **New Search**: Always use fuzzy search (see below)
+
+## Search Pattern (REQUIRED)
+
+**IMPORTANT**: All search functionality MUST use the fuzzy search utility from `lib/fuzzySearch.ts`. Never implement simple string matching (`.includes()`, `.toLowerCase()`) for user-facing search.
+
+```typescript
+import { fuzzyFilter } from '@/lib/fuzzySearch'
+
+// In component with search
+const [searchTerm, setSearchTerm] = useState('')
+
+const filteredItems = useMemo(() => {
+  if (!searchTerm) return items
+
+  return fuzzyFilter(
+    items,
+    ['field1', 'field2', 'nestedField.name'],  // fields to search
+    searchTerm
+  )
+}, [items, searchTerm])
+```
+
+### Features
+- **Levenshtein distance**: Tolerates typos (e.g., "Müler" finds "Müller")
+- **Token matching**: Finds partial words
+- **Relevance sorting**: Best matches first
+- **Threshold 0.4**: Good balance between accuracy and tolerance
+
+### For nested data (e.g., tenant with property)
+Flatten the data first for search:
+
+```typescript
+const enrichedItems = useMemo(() => {
+  return items.map((item) => ({
+    ...item,
+    // Flatten nested fields for fuzzy search
+    propertyName: item.property?.name || '',
+    unitDesignation: item.unit?.designation || '',
+  }))
+}, [items])
+
+const filtered = fuzzyFilter(enrichedItems, ['name', 'propertyName'], searchTerm)
+```
 
 ## Form Pattern
 

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { User, Search, Home, Calendar, Mail, Phone } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
+import { fuzzyFilter } from '@/lib/fuzzySearch'
 import { useState, useMemo } from 'react'
 
 export default function TenantsPage() {
@@ -31,30 +32,32 @@ export default function TenantsPage() {
         ...tenant,
         unit,
         property,
+        // Flattened fields for fuzzy search
+        propertyName: property?.name || '',
+        unitDesignation: unit?.designation || '',
       }
     })
   }, [tenants, units, properties])
 
-  const filteredTenants = useMemo(() => {
+  // First filter by active status
+  const statusFilteredTenants = useMemo(() => {
     return enrichedTenants.filter((tenant) => {
-      // Filter by active status
       if (filterActive === 'active' && (!tenant.is_active || tenant.move_out_date)) return false
       if (filterActive === 'inactive' && tenant.is_active && !tenant.move_out_date) return false
-
-      // Filter by search term
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase()
-        const matchesName = tenant.full_name.toLowerCase().includes(search)
-        const matchesEmail = tenant.email?.toLowerCase().includes(search)
-        const matchesProperty = tenant.property?.name.toLowerCase().includes(search)
-        const matchesUnit = tenant.unit?.designation.toLowerCase().includes(search)
-
-        return matchesName || matchesEmail || matchesProperty || matchesUnit
-      }
-
       return true
     })
-  }, [enrichedTenants, searchTerm, filterActive])
+  }, [enrichedTenants, filterActive])
+
+  // Then apply fuzzy search
+  const filteredTenants = useMemo(() => {
+    if (!searchTerm) return statusFilteredTenants
+
+    return fuzzyFilter(
+      statusFilteredTenants,
+      ['full_name', 'email', 'propertyName', 'unitDesignation', 'phone'],
+      searchTerm
+    )
+  }, [statusFilteredTenants, searchTerm])
 
   const activeTenants = enrichedTenants.filter((t) => t.is_active && !t.move_out_date)
   const inactiveTenants = enrichedTenants.filter((t) => !t.is_active || t.move_out_date)
