@@ -36,7 +36,11 @@ class Document(Base):
         Enum(DocumentStatus), default=DocumentStatus.PENDING
     )
     ocr_raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ocr_corrected_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ocr_confidence: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    ocr_engine: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    llm_extraction_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    llm_extraction_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     include_in_export: Mapped[bool] = mapped_column(Boolean, default=False)
 
     upload_date: Mapped[datetime] = mapped_column(
@@ -53,3 +57,8 @@ class Document(Base):
     @property
     def file_size_mb(self) -> float:
         return round(self.file_size_bytes / (1024 * 1024), 2)
+
+    @property
+    def ocr_text(self) -> Optional[str]:
+        """Gibt den besten verfuegbaren OCR-Text zurueck (korrigiert oder roh)"""
+        return self.ocr_corrected_text or self.ocr_raw_text

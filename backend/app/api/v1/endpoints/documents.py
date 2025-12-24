@@ -29,8 +29,8 @@ def get_upload_path(settlement_id: UUID, filename: str) -> str:
 
 
 def process_document_ocr(document_id: UUID):
-    """Background Task für OCR-Verarbeitung"""
-    # Neue DB-Session für Background Task
+    """Background Task fuer OCR-Verarbeitung"""
+    # Neue DB-Session fuer Background Task
     db = SessionLocal()
     try:
         document_obj = db.query(Document).filter(Document.id == document_id).first()
@@ -38,21 +38,30 @@ def process_document_ocr(document_id: UUID):
             logger.error(f"Dokument nicht gefunden: {document_id}")
             return
 
-        logger.info(f"Starte OCR-Verarbeitung für Dokument: {document_obj.original_filename}")
+        logger.info(f"Starte OCR-Verarbeitung fuer Dokument: {document_obj.original_filename}")
 
         try:
-            processor = OCRProcessor()
+            # DB-Session fuer LLM-Extraktion uebergeben
+            processor = OCRProcessor(db=db)
             result = processor.process_file(document_obj.file_path)
 
             document_obj.ocr_raw_text = result.raw_text
+            document_obj.ocr_corrected_text = result.corrected_text
             document_obj.ocr_confidence = result.confidence
+            document_obj.ocr_engine = result.engine_used
+            document_obj.llm_extraction_used = result.llm_extraction_used
+            document_obj.llm_extraction_error = result.llm_extraction_error
             document_obj.document_status = DocumentStatus.PROCESSED
             document_obj.processed_at = datetime.utcnow()
 
-            logger.info(f"OCR erfolgreich: {document_obj.original_filename} (Konfidenz: {result.confidence}%)")
+            llm_info = " (mit LLM-Extraktion)" if result.llm_extraction_used else ""
+            if result.llm_extraction_error:
+                llm_info = f" (LLM-Fehler: {result.llm_extraction_error[:50]}...)"
+            logger.info(f"OCR erfolgreich: {document_obj.original_filename} "
+                       f"(Konfidenz: {result.confidence}%, Engine: {result.engine_used}{llm_info})")
 
         except Exception as e:
-            logger.error(f"OCR-Fehler für {document_obj.original_filename}: {str(e)}")
+            logger.error(f"OCR-Fehler fuer {document_obj.original_filename}: {str(e)}")
             document_obj.document_status = DocumentStatus.FAILED
             document_obj.ocr_raw_text = f"Fehler: {str(e)}"
 
@@ -196,11 +205,14 @@ def get_ocr_result(
             detail="Dokument nicht gefunden"
         )
 
+    # Verwende korrigierten Text wenn vorhanden, sonst Rohtext
+    text_for_extraction = document_obj.ocr_text  # Property: corrected_text or raw_text
+
     # Extrahiere strukturierte Daten aus dem OCR-Text
     extracted_data = None
-    if document_obj.ocr_raw_text:
+    if text_for_extraction:
         extractor = InvoiceDataExtractor()
-        extracted = extractor.extract(document_obj.ocr_raw_text)
+        extracted = extractor.extract(text_for_extraction)
         extracted_data = {
             "vendor_name": extracted.vendor_name,
             "invoice_number": extracted.invoice_number,
@@ -213,7 +225,11 @@ def get_ocr_result(
         document_id=document_obj.id,
         status=document_obj.document_status,
         raw_text=document_obj.ocr_raw_text,
+        corrected_text=document_obj.ocr_corrected_text,
         confidence=document_obj.ocr_confidence,
+        engine=document_obj.ocr_engine,
+        llm_extraction_used=document_obj.llm_extraction_used,
+        llm_extraction_error=document_obj.llm_extraction_error,
         extracted_data=extracted_data
     )
 

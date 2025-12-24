@@ -1,17 +1,16 @@
 """
-OCR-Prozessor für Rechnungsdokumente
+Haupt-OCR-Prozessor fuer Rechnungsdokumente.
+Orchestriert docTR (primary), Tesseract (fallback), und optionale LLM-Extraktion.
 """
-import io
-from pathlib import Path
+import logging
 from typing import Optional
 from dataclasses import dataclass
 
-import pytesseract
-from PIL import Image
-import pdf2image
+from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.ocr.extractor import InvoiceDataExtractor, ExtractedInvoiceData
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,125 +19,208 @@ class OCRResult:
     raw_text: str
     confidence: float
     extracted_data: ExtractedInvoiceData
+    corrected_text: Optional[str] = None
+    llm_extraction_used: bool = False
+    llm_extraction_error: Optional[str] = None
+    engine_used: str = "unknown"
 
 
 class OCRProcessor:
-    """Haupt-OCR-Prozessor für deutsche Rechnungen"""
+    """
+    Haupt-OCR-Prozessor mit docTR, Tesseract-Fallback und optionaler LLM-Extraktion.
 
-    def __init__(self):
+    Strategie:
+    1. Versuche docTR (moderne Deep-Learning OCR)
+    2. Falls docTR fehlschlaegt: Fallback auf Tesseract
+    3. Falls LLM konfiguriert: Datenextraktion via LLM (direkt strukturierte Daten)
+    4. Fallback: Regex-basierte Extraktion
+    """
+
+    def __init__(self, db: Optional[Session] = None):
+        """
+        Initialisiere den Prozessor.
+
+        Args:
+            db: Optionale DB-Session fuer LLM-Einstellungen.
+                Ohne Session wird keine LLM-Extraktion durchgefuehrt.
+        """
+        self.db = db
         self.extractor = InvoiceDataExtractor()
-        # Tesseract-Konfiguration für deutsche Dokumente
-        self.tesseract_config = r'--oem 3 --psm 6 -l deu'
-        pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD
+        self._doctr_processor = None
+        self._tesseract_processor = None
+        self._doctr_available = None
+
+    @property
+    def doctr_processor(self):
+        """Lazy load docTR processor"""
+        if self._doctr_processor is None:
+            try:
+                from app.ocr.doctr_processor import DocTRProcessor
+                self._doctr_processor = DocTRProcessor()
+            except ImportError as e:
+                logger.warning(f"docTR nicht verfuegbar: {e}")
+                self._doctr_processor = False  # False = nicht verfuegbar
+        return self._doctr_processor if self._doctr_processor else None
+
+    @property
+    def tesseract_processor(self):
+        """Lazy load Tesseract processor"""
+        if self._tesseract_processor is None:
+            from app.ocr.tesseract_processor import TesseractProcessor
+            self._tesseract_processor = TesseractProcessor()
+        return self._tesseract_processor
+
+    def _is_doctr_available(self) -> bool:
+        """Pruefe ob docTR verfuegbar ist"""
+        if self._doctr_available is None:
+            try:
+                import doctr  # noqa
+                self._doctr_available = True
+            except ImportError:
+                self._doctr_available = False
+        return self._doctr_available
 
     def process_file(self, file_path: str) -> OCRResult:
-        """Verarbeite eine Datei und extrahiere Rechnungsdaten"""
-        path = Path(file_path)
+        """
+        Verarbeite eine Datei und extrahiere Rechnungsdaten.
 
-        if not path.exists():
-            raise FileNotFoundError(f"Datei nicht gefunden: {file_path}")
+        Args:
+            file_path: Pfad zur Datei (PDF oder Bild)
 
-        # Datei in Bilder konvertieren
-        images = self._convert_to_images(path)
+        Returns:
+            OCRResult mit Text, Konfidenz und extrahierten Daten
+        """
+        # Versuche docTR, dann Tesseract
+        raw_text, confidence, engine = self._run_ocr_file(file_path)
 
-        # OCR auf allen Seiten ausführen
-        all_text = []
-        total_confidence = 0
-
-        for img in images:
-            # Bild vorverarbeiten
-            processed_img = self._preprocess_image(img)
-
-            # OCR ausführen
-            data = pytesseract.image_to_data(
-                processed_img,
-                config=self.tesseract_config,
-                output_type=pytesseract.Output.DICT
-            )
-
-            # Text extrahieren
-            text = pytesseract.image_to_string(
-                processed_img,
-                config=self.tesseract_config
-            )
-            all_text.append(text)
-
-            # Konfidenz berechnen (Durchschnitt der Wortkonfidenzen)
-            confidences = [int(c) for c in data['conf'] if int(c) > 0]
-            if confidences:
-                total_confidence += sum(confidences) / len(confidences)
-
-        full_text = "\n".join(all_text)
-        avg_confidence = total_confidence / len(images) if images else 0
-
-        # Strukturierte Daten extrahieren
-        extracted_data = self.extractor.extract(full_text)
+        # Versuche LLM-Extraktion, dann Regex-Fallback
+        extracted_data, llm_used, llm_error = self._extract_data(raw_text)
 
         return OCRResult(
-            raw_text=full_text,
-            confidence=round(avg_confidence, 2),
-            extracted_data=extracted_data
+            raw_text=raw_text,
+            confidence=confidence,
+            extracted_data=extracted_data,
+            llm_extraction_used=llm_used,
+            llm_extraction_error=llm_error,
+            engine_used=engine
         )
 
     def process_bytes(self, content: bytes, filename: str) -> OCRResult:
-        """Verarbeite Bytes und extrahiere Rechnungsdaten"""
-        # Datei temporär speichern oder direkt verarbeiten
-        if filename.lower().endswith('.pdf'):
-            images = pdf2image.convert_from_bytes(content, dpi=300)
-        else:
-            images = [Image.open(io.BytesIO(content))]
+        """
+        Verarbeite Bytes und extrahiere Rechnungsdaten.
 
-        all_text = []
-        total_confidence = 0
+        Args:
+            content: Dateiinhalt als Bytes
+            filename: Dateiname (fuer Formatbestimmung)
 
-        for img in images:
-            processed_img = self._preprocess_image(img)
+        Returns:
+            OCRResult mit Text, Konfidenz und extrahierten Daten
+        """
+        # Versuche docTR, dann Tesseract
+        raw_text, confidence, engine = self._run_ocr_bytes(content, filename)
 
-            data = pytesseract.image_to_data(
-                processed_img,
-                config=self.tesseract_config,
-                output_type=pytesseract.Output.DICT
-            )
-
-            text = pytesseract.image_to_string(
-                processed_img,
-                config=self.tesseract_config
-            )
-            all_text.append(text)
-
-            confidences = [int(c) for c in data['conf'] if int(c) > 0]
-            if confidences:
-                total_confidence += sum(confidences) / len(confidences)
-
-        full_text = "\n".join(all_text)
-        avg_confidence = total_confidence / len(images) if images else 0
-
-        extracted_data = self.extractor.extract(full_text)
+        # Versuche LLM-Extraktion, dann Regex-Fallback
+        extracted_data, llm_used, llm_error = self._extract_data(raw_text)
 
         return OCRResult(
-            raw_text=full_text,
-            confidence=round(avg_confidence, 2),
-            extracted_data=extracted_data
+            raw_text=raw_text,
+            confidence=confidence,
+            extracted_data=extracted_data,
+            llm_extraction_used=llm_used,
+            llm_extraction_error=llm_error,
+            engine_used=engine
         )
 
-    def _convert_to_images(self, path: Path) -> list[Image.Image]:
-        """Konvertiere Dokument zu Bildern"""
-        suffix = path.suffix.lower()
+    def _run_ocr_file(self, file_path: str) -> tuple:
+        """
+        Fuehre OCR auf Datei aus (docTR oder Tesseract).
 
-        if suffix == '.pdf':
-            return pdf2image.convert_from_path(str(path), dpi=300)
-        elif suffix in ['.png', '.jpg', '.jpeg']:
-            return [Image.open(path)]
-        else:
-            raise ValueError(f"Nicht unterstütztes Dateiformat: {suffix}")
+        Returns:
+            tuple: (raw_text, confidence, engine_name)
+        """
+        # Versuche docTR
+        if self._is_doctr_available():
+            try:
+                processor = self.doctr_processor
+                if processor:
+                    result = processor.process_file(file_path)
+                    logger.info(f"docTR OCR erfolgreich, Konfidenz: {result.confidence}%")
+                    return result.raw_text, result.confidence, "doctr"
+            except Exception as e:
+                logger.warning(f"docTR fehlgeschlagen, verwende Tesseract: {e}")
 
-    def _preprocess_image(self, image: Image.Image) -> Image.Image:
-        """Bildvorverarbeitung für bessere OCR-Ergebnisse"""
-        # In Graustufen konvertieren falls nötig
-        if image.mode != 'L':
-            image = image.convert('L')
+        # Fallback: Tesseract
+        result = self.tesseract_processor.process_file(file_path)
+        logger.info(f"Tesseract OCR erfolgreich, Konfidenz: {result.confidence}%")
+        return result.raw_text, result.confidence, "tesseract"
 
-        # Kontrast erhöhen (einfache Methode)
-        # Für bessere Ergebnisse könnte OpenCV verwendet werden
+    def _run_ocr_bytes(self, content: bytes, filename: str) -> tuple:
+        """
+        Fuehre OCR auf Bytes aus (docTR oder Tesseract).
 
-        return image
+        Returns:
+            tuple: (raw_text, confidence, engine_name)
+        """
+        # Versuche docTR
+        if self._is_doctr_available():
+            try:
+                processor = self.doctr_processor
+                if processor:
+                    result = processor.process_bytes(content, filename)
+                    logger.info(f"docTR OCR erfolgreich, Konfidenz: {result.confidence}%")
+                    return result.raw_text, result.confidence, "doctr"
+            except Exception as e:
+                logger.warning(f"docTR fehlgeschlagen, verwende Tesseract: {e}")
+
+        # Fallback: Tesseract
+        result = self.tesseract_processor.process_bytes(content, filename)
+        logger.info(f"Tesseract OCR erfolgreich, Konfidenz: {result.confidence}%")
+        return result.raw_text, result.confidence, "tesseract"
+
+    def _extract_data(self, text: str) -> tuple:
+        """
+        Extrahiere Rechnungsdaten - LLM wenn konfiguriert, sonst Regex.
+
+        Returns:
+            tuple: (ExtractedInvoiceData, llm_used: bool, error_message: Optional[str])
+        """
+        if not text:
+            return ExtractedInvoiceData(), False, None
+
+        # Versuche LLM-Extraktion wenn konfiguriert
+        if self.db:
+            try:
+                from app.services.llm_service import get_llm_settings
+
+                settings = get_llm_settings(self.db)
+
+                if settings.is_configured:
+                    from app.ocr.llm_corrector import LLMExtractor
+
+                    extractor = LLMExtractor(settings.api_key, settings.model)
+                    result = extractor.extract_data_sync(text)
+
+                    if result.success:
+                        logger.info(f"LLM-Extraktion erfolgreich mit {result.model_used}")
+                        # Konvertiere ExtractionResult zu ExtractedInvoiceData
+                        return ExtractedInvoiceData(
+                            vendor_name=result.vendor_name,
+                            invoice_number=result.invoice_number,
+                            invoice_date=result.invoice_date,
+                            total_amount=result.total_amount,
+                            suggested_category=result.cost_category
+                        ), True, None
+                    else:
+                        error_msg = f"LLM-Extraktion fehlgeschlagen: {result.error_message}"
+                        logger.warning(f"{error_msg}, verwende Regex-Fallback")
+                        # Regex-Fallback mit Fehlermeldung
+                        return self.extractor.extract(text), False, error_msg
+
+            except Exception as e:
+                error_msg = f"Fehler bei LLM-Extraktion: {e}"
+                logger.error(f"{error_msg}, verwende Regex-Fallback")
+                return self.extractor.extract(text), False, error_msg
+
+        # Fallback: Regex-basierte Extraktion (kein LLM konfiguriert)
+        logger.debug("Verwende Regex-Extraktion")
+        return self.extractor.extract(text), False, None
