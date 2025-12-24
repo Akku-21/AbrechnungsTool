@@ -180,6 +180,9 @@ export interface Document {
   document_status: DocumentStatus
   ocr_raw_text?: string
   ocr_confidence?: number
+  ocr_engine?: string
+  llm_extraction_used: boolean
+  llm_extraction_error?: string
   include_in_export: boolean
   upload_date: string
   processed_at?: string
@@ -208,6 +211,9 @@ export interface OCRResult {
   status: DocumentStatus
   raw_text?: string
   confidence?: number
+  engine?: string
+  llm_extraction_used: boolean
+  llm_extraction_error?: string
   extracted_data?: OCRExtractedData
 }
 

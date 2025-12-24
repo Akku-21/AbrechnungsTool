@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/hooks/useToast'
 import {
   ArrowLeft,
   Upload,
@@ -67,6 +69,8 @@ export default function SettlementDetailPage({
   const { id } = use(params)
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { confirm, ConfirmDialog } = useConfirmDialog()
+  const { toast } = useToast()
 
   const { data: settlement, isLoading: settlementLoading } = useSettlement(id)
   const { data: property } = useProperty(settlement?.property_id || '')
@@ -198,7 +202,11 @@ export default function SettlementDetailPage({
     )
 
     if (validFiles.length === 0) {
-      alert('Bitte nur PDF, PNG oder JPG Dateien hochladen.')
+      toast({
+        title: 'Ungültiger Dateityp',
+        message: 'Bitte nur PDF, PNG oder JPG Dateien hochladen.',
+        variant: 'error',
+      })
       return
     }
 
@@ -261,7 +269,13 @@ export default function SettlementDetailPage({
   }
 
   const handleDeleteDocument = async (docId: string) => {
-    if (confirm('Dokument wirklich löschen?')) {
+    const confirmed = await confirm({
+      title: 'Dokument löschen',
+      message: 'Möchten Sie dieses Dokument wirklich löschen?',
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteDocument.mutateAsync(docId)
     }
   }
@@ -284,14 +298,24 @@ export default function SettlementDetailPage({
       document.body.removeChild(a)
     } catch (error) {
       console.error('PDF Export failed:', error)
-      alert('PDF-Export fehlgeschlagen. Bitte zuerst berechnen.')
+      toast({
+        title: 'Export fehlgeschlagen',
+        message: 'PDF-Export fehlgeschlagen. Bitte zuerst berechnen.',
+        variant: 'error',
+      })
     } finally {
       setIsExportingPdf(false)
     }
   }
 
   const handleDeleteSettlement = async () => {
-    if (confirm('Abrechnung wirklich löschen? Alle zugehörigen Dokumente und Rechnungen werden ebenfalls gelöscht.')) {
+    const confirmed = await confirm({
+      title: 'Abrechnung löschen',
+      message: 'Abrechnung wirklich löschen? Alle zugehörigen Dokumente und Rechnungen werden ebenfalls gelöscht.',
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteSettlement.mutateAsync(id)
       router.push('/settlements')
     }
@@ -322,7 +346,13 @@ export default function SettlementDetailPage({
   }
 
   const handleDeleteInvoice = async (invoiceId: string) => {
-    if (confirm('Rechnung wirklich löschen?')) {
+    const confirmed = await confirm({
+      title: 'Rechnung löschen',
+      message: 'Möchten Sie diese Rechnung wirklich löschen?',
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteInvoice.mutateAsync(invoiceId)
     }
   }
@@ -921,16 +951,44 @@ export default function SettlementDetailPage({
                 </div>
               ) : ocrResult ? (
                 <div className="space-y-6">
-                  {/* Confidence */}
-                  {ocrResult.confidence !== undefined && ocrResult.confidence !== null && (
+                  {/* OCR Info */}
+                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                    {ocrResult.confidence !== undefined && ocrResult.confidence !== null && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">OCR-Konfidenz:</span>
+                        <span className={`font-medium ${
+                          Number(ocrResult.confidence) >= 70 ? 'text-green-600' :
+                          Number(ocrResult.confidence) >= 50 ? 'text-yellow-600' : 'text-red-600'
+                        }`}>
+                          {Number(ocrResult.confidence).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                        </span>
+                      </div>
+                    )}
+                    {ocrResult.engine && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Engine:</span>
+                        <span className="font-medium">{ocrResult.engine}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">OCR-Konfidenz:</span>
-                      <span className={`font-medium ${
-                        Number(ocrResult.confidence) >= 70 ? 'text-green-600' :
-                        Number(ocrResult.confidence) >= 50 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {Number(ocrResult.confidence).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                      <span className="text-muted-foreground">Extraktion:</span>
+                      <span className={`font-medium ${ocrResult.llm_extraction_used ? 'text-green-600' : 'text-gray-600'}`}>
+                        {ocrResult.llm_extraction_used ? 'LLM' : 'Regex'}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* LLM Extraction Error Warning */}
+                  {ocrResult.llm_extraction_error && (
+                    <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800">LLM-Extraktion fehlgeschlagen</p>
+                        <p className="text-sm text-amber-700 mt-1">{ocrResult.llm_extraction_error}</p>
+                        <p className="text-xs text-amber-600 mt-2">
+                          Fallback auf Regex-Extraktion. Die extrahierten Daten können ungenau sein.
+                        </p>
+                      </div>
                     </div>
                   )}
 
@@ -1073,6 +1131,9 @@ export default function SettlementDetailPage({
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      {ConfirmDialog}
 
       {/* Finalize Modal */}
       {showFinalizeModal && (

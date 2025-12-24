@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   ArrowLeft,
   Edit,
@@ -39,6 +40,7 @@ export default function UnitDetailPage({
   const createTenant = useCreateTenant()
   const deleteTenant = useDeleteTenant()
   const moveOutTenant = useMoveOutTenant()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
 
   const [isEditing, setIsEditing] = useState(false)
   const [showTenantForm, setShowTenantForm] = useState(false)
@@ -120,7 +122,13 @@ export default function UnitDetailPage({
   }
 
   const handleDeleteTenant = async (tenantId: string, name: string) => {
-    if (confirm(`Möchten Sie den Mieter "${name}" wirklich löschen?`)) {
+    const confirmed = await confirm({
+      title: 'Mieter löschen',
+      message: `Möchten Sie den Mieter "${name}" wirklich löschen?`,
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteTenant.mutateAsync(tenantId)
     }
   }
@@ -552,6 +560,8 @@ export default function UnitDetailPage({
           </CardContent>
         </Card>
       )}
+
+      {ConfirmDialog}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useSettlements, useDeleteSettlement } from '@/hooks/useSettlements'
 import { useProperties } from '@/hooks/useProperties'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { FileText, Plus, Trash2, Eye, Download, CheckCircle, Clock, FileCheck } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { SettlementStatus } from '@/types'
@@ -20,6 +21,7 @@ export default function SettlementsPage() {
   const { data: settlements, isLoading, error } = useSettlements()
   const { data: propertiesData } = useProperties()
   const deleteSettlement = useDeleteSettlement()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
 
   const properties = propertiesData?.items || []
 
@@ -28,7 +30,13 @@ export default function SettlementsPage() {
   }
 
   const handleDelete = async (id: string, periodLabel: string) => {
-    if (confirm(`Möchten Sie die Abrechnung "${periodLabel}" wirklich löschen?`)) {
+    const confirmed = await confirm({
+      title: 'Abrechnung löschen',
+      message: `Möchten Sie die Abrechnung "${periodLabel}" wirklich löschen?`,
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteSettlement.mutateAsync(id)
     }
   }
@@ -140,6 +148,8 @@ export default function SettlementsPage() {
           })}
         </div>
       )}
+
+      {ConfirmDialog}
     </div>
   )
 }

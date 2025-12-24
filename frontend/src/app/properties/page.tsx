@@ -4,17 +4,25 @@ import Link from 'next/link'
 import { useProperties, useDeleteProperty } from '@/hooks/useProperties'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Building2, Plus, Trash2, Edit, Eye } from 'lucide-react'
 import { formatArea } from '@/lib/utils'
 
 export default function PropertiesPage() {
   const { data, isLoading, error } = useProperties()
   const deleteProperty = useDeleteProperty()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
 
   const properties = data?.items || []
 
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Möchten Sie die Liegenschaft "${name}" wirklich löschen?`)) {
+    const confirmed = await confirm({
+      title: 'Liegenschaft löschen',
+      message: `Möchten Sie die Liegenschaft "${name}" wirklich löschen?`,
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteProperty.mutateAsync(id)
     }
   }
@@ -123,6 +131,8 @@ export default function PropertiesPage() {
           ))}
         </div>
       )}
+
+      {ConfirmDialog}
     </div>
   )
 }

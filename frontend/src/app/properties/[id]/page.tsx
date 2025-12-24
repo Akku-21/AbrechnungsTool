@@ -7,6 +7,7 @@ import { useUnits, useCreateUnit, useDeleteUnit } from '@/hooks/useUnits'
 import { useTenants } from '@/hooks/useTenants'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { ArrowLeft, Edit, Plus, Home, User, Trash2 } from 'lucide-react'
 import { formatArea, formatCurrency } from '@/lib/utils'
 
@@ -20,9 +21,16 @@ export default function PropertyDetailPage({
   const { data: units, isLoading: unitsLoading } = useUnits(id)
   const { data: tenants } = useTenants()
   const deleteUnit = useDeleteUnit()
+  const { confirm, ConfirmDialog } = useConfirmDialog()
 
   const handleDeleteUnit = async (unitId: string, designation: string) => {
-    if (confirm(`Möchten Sie die Wohneinheit "${designation}" wirklich löschen?`)) {
+    const confirmed = await confirm({
+      title: 'Wohneinheit löschen',
+      message: `Möchten Sie die Wohneinheit "${designation}" wirklich löschen?`,
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteUnit.mutateAsync(unitId)
     }
   }
@@ -193,6 +201,8 @@ export default function PropertyDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {ConfirmDialog}
     </div>
   )
 }
