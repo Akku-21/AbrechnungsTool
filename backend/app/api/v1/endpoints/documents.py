@@ -54,6 +54,14 @@ def process_document_ocr(document_id: UUID):
             document_obj.document_status = DocumentStatus.PROCESSED
             document_obj.processed_at = datetime.utcnow()
 
+            # Extrahierte Daten speichern (von LLM oder Regex)
+            if result.extracted_data:
+                document_obj.extracted_vendor_name = result.extracted_data.vendor_name
+                document_obj.extracted_invoice_number = result.extracted_data.invoice_number
+                document_obj.extracted_invoice_date = result.extracted_data.invoice_date
+                document_obj.extracted_total_amount = result.extracted_data.total_amount
+                document_obj.extracted_cost_category = result.extracted_data.suggested_category
+
             llm_info = " (mit LLM-Extraktion)" if result.llm_extraction_used else ""
             if result.llm_extraction_error:
                 llm_info = f" (LLM-Fehler: {result.llm_extraction_error[:50]}...)"
@@ -195,9 +203,7 @@ def get_ocr_result(
     document_id: UUID,
     db: Session = Depends(get_db)
 ):
-    """OCR-Ergebnis abrufen"""
-    from app.ocr.extractor import InvoiceDataExtractor
-
+    """OCR-Ergebnis abrufen - verwendet gespeicherte extrahierte Daten"""
     document_obj = db.query(Document).filter(Document.id == document_id).first()
     if not document_obj:
         raise HTTPException(
@@ -205,14 +211,21 @@ def get_ocr_result(
             detail="Dokument nicht gefunden"
         )
 
-    # Verwende korrigierten Text wenn vorhanden, sonst Rohtext
-    text_for_extraction = document_obj.ocr_text  # Property: corrected_text or raw_text
-
-    # Extrahiere strukturierte Daten aus dem OCR-Text
+    # Verwende gespeicherte extrahierte Daten (von LLM oder Regex bei OCR-Verarbeitung)
     extracted_data = None
-    if text_for_extraction:
+    if document_obj.extracted_vendor_name or document_obj.extracted_total_amount:
+        extracted_data = {
+            "vendor_name": document_obj.extracted_vendor_name,
+            "invoice_number": document_obj.extracted_invoice_number,
+            "invoice_date": document_obj.extracted_invoice_date.isoformat() if document_obj.extracted_invoice_date else None,
+            "total_amount": float(document_obj.extracted_total_amount) if document_obj.extracted_total_amount else None,
+            "suggested_category": document_obj.extracted_cost_category.value if document_obj.extracted_cost_category else None,
+        }
+    elif document_obj.ocr_text:
+        # Fallback: Regex-Extraktion fuer aeltere Dokumente ohne gespeicherte Daten
+        from app.ocr.extractor import InvoiceDataExtractor
         extractor = InvoiceDataExtractor()
-        extracted = extractor.extract(text_for_extraction)
+        extracted = extractor.extract(document_obj.ocr_text)
         extracted_data = {
             "vendor_name": extracted.vendor_name,
             "invoice_number": extracted.invoice_number,
@@ -230,6 +243,87 @@ def get_ocr_result(
         engine=document_obj.ocr_engine,
         llm_extraction_used=document_obj.llm_extraction_used,
         llm_extraction_error=document_obj.llm_extraction_error,
+        extracted_data=extracted_data
+    )
+
+
+@router.post("/{document_id}/re-extract", response_model=OCRResultResponse)
+async def re_extract_data(
+    document_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Erneute LLM-Extraktion der Rechnungsdaten aus dem OCR-Text.
+    Ueberschreibt die gespeicherten extrahierten Daten.
+    """
+    document_obj = db.query(Document).filter(Document.id == document_id).first()
+    if not document_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+
+    if not document_obj.ocr_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kein OCR-Text vorhanden. Bitte zuerst OCR-Verarbeitung durchfuehren."
+        )
+
+    # Versuche LLM-Extraktion
+    from app.services.llm_service import get_llm_settings
+
+    llm_settings = get_llm_settings(db)
+
+    if not llm_settings.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="LLM-Extraktion nicht konfiguriert. Bitte API-Key und Modell in den Einstellungen hinterlegen."
+        )
+
+    from app.ocr.llm_corrector import LLMExtractor
+
+    extractor = LLMExtractor(llm_settings.api_key, llm_settings.model)
+    result = await extractor.extract_data(document_obj.ocr_text)
+
+    if result.success:
+        # Aktualisiere gespeicherte Daten
+        document_obj.extracted_vendor_name = result.vendor_name
+        document_obj.extracted_invoice_number = result.invoice_number
+        document_obj.extracted_invoice_date = result.invoice_date
+        document_obj.extracted_total_amount = result.total_amount
+        document_obj.extracted_cost_category = result.cost_category
+        document_obj.llm_extraction_used = True
+        document_obj.llm_extraction_error = None
+
+        db.commit()
+        db.refresh(document_obj)
+
+        extracted_data = {
+            "vendor_name": result.vendor_name,
+            "invoice_number": result.invoice_number,
+            "invoice_date": result.invoice_date.isoformat() if result.invoice_date else None,
+            "total_amount": float(result.total_amount) if result.total_amount else None,
+            "suggested_category": result.cost_category.value if result.cost_category else None,
+        }
+    else:
+        # Speichere Fehler
+        document_obj.llm_extraction_error = result.error_message
+        db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"LLM-Extraktion fehlgeschlagen: {result.error_message}"
+        )
+
+    return OCRResultResponse(
+        document_id=document_obj.id,
+        status=document_obj.document_status,
+        raw_text=document_obj.ocr_raw_text,
+        corrected_text=document_obj.ocr_corrected_text,
+        confidence=document_obj.ocr_confidence,
+        engine=document_obj.ocr_engine,
+        llm_extraction_used=True,
+        llm_extraction_error=None,
         extracted_data=extracted_data
     )
 

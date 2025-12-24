@@ -1,14 +1,14 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import String, Text, BigInteger, Boolean, DateTime, Numeric, ForeignKey, Enum, func
+from sqlalchemy import String, Text, BigInteger, Boolean, DateTime, Date, Numeric, ForeignKey, Enum, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.enums import DocumentStatus
+from app.models.enums import DocumentStatus, CostCategory
 
 if TYPE_CHECKING:
     from app.models.settlement import Settlement
@@ -42,6 +42,15 @@ class Document(Base):
     llm_extraction_used: Mapped[bool] = mapped_column(Boolean, default=False)
     llm_extraction_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     include_in_export: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Extrahierte Rechnungsdaten (von LLM oder Regex)
+    extracted_vendor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    extracted_invoice_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    extracted_invoice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    extracted_total_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    extracted_cost_category: Mapped[Optional[CostCategory]] = mapped_column(
+        Enum(CostCategory), nullable=True
+    )
 
     upload_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
