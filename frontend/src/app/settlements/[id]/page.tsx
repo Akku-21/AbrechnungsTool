@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { useSettlement, useCalculateSettlement, useDeleteSettlement, useFinalizeSettlement, useCopySettlement, useUpdateSettlement } from '@/hooks/useSettlements'
+import { useSettlement, useDeleteSettlement, useFinalizeSettlement, useCopySettlement, useUpdateSettlement } from '@/hooks/useSettlements'
 import { useProperty } from '@/hooks/useProperties'
 import { useDocuments, useUploadDocument, useDeleteDocument, useProcessDocument, useOCRResult, useUpdateDocument, useReExtractDocument } from '@/hooks/useDocuments'
 import { useInvoices, useCreateInvoice, useDeleteInvoice } from '@/hooks/useInvoices'
@@ -19,7 +19,6 @@ import {
   Upload,
   FileText,
   Trash2,
-  Calculator,
   Download,
   Plus,
   Eye,
@@ -40,6 +39,7 @@ import {
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { COST_CATEGORY_LABELS, CostCategory, InvoiceCreate } from '@/types'
+import { UnitSettlementsList } from '@/components/settlements/UnitSettlementsList'
 
 // Accepted file types for upload
 const ACCEPTED_FILE_TYPES = [
@@ -51,7 +51,7 @@ const ACCEPTED_FILE_TYPES = [
 
 const STATUS_CONFIG = {
   DRAFT: { label: 'Entwurf', color: 'bg-gray-100 text-gray-800', icon: Clock },
-  CALCULATED: { label: 'Berechnet', color: 'bg-blue-100 text-blue-800', icon: Calculator },
+  CALCULATED: { label: 'Entwurf', color: 'bg-gray-100 text-gray-800', icon: Clock },  // Legacy, jetzt wie DRAFT
   FINALIZED: { label: 'Abgeschlossen', color: 'bg-green-100 text-green-800', icon: CheckCircle },
   EXPORTED: { label: 'Exportiert', color: 'bg-purple-100 text-purple-800', icon: Download },
 }
@@ -92,14 +92,13 @@ export default function SettlementDetailPage({
     return () => clearInterval(interval)
   }, [hasProcessingDocs, refetchDocs])
 
-  const { data: invoices, isLoading: invoicesLoading } = useInvoices(id)
+  const { data: invoices, isLoading: invoicesLoading } = useInvoices({ settlementId: id })
 
   const uploadDocument = useUploadDocument()
   const deleteDocument = useDeleteDocument()
   const processDocument = useProcessDocument()
   const updateDocument = useUpdateDocument()
   const reExtractDocument = useReExtractDocument()
-  const calculateSettlement = useCalculateSettlement()
   const deleteSettlement = useDeleteSettlement()
   const finalizeSettlement = useFinalizeSettlement()
   const copySettlement = useCopySettlement()
@@ -285,10 +284,6 @@ export default function SettlementDetailPage({
     if (confirmed) {
       await deleteDocument.mutateAsync(docId)
     }
-  }
-
-  const handleCalculate = async () => {
-    await calculateSettlement.mutateAsync(id)
   }
 
   const handleExportPdf = async () => {
@@ -506,20 +501,8 @@ export default function SettlementDetailPage({
         </div>
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            onClick={handleCalculate}
-            disabled={calculateSettlement.isPending || !invoices?.length}
-          >
-            {calculateSettlement.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Calculator className="mr-2 h-4 w-4" />
-            )}
-            Berechnen
-          </Button>
-          <Button
             onClick={handleExportPdf}
-            disabled={settlement.status === 'DRAFT' || isExportingPdf}
+            disabled={!invoices?.length || isExportingPdf}
           >
             {isExportingPdf ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -528,11 +511,11 @@ export default function SettlementDetailPage({
             )}
             {isExportingPdf ? 'Exportiere...' : 'PDF Export'}
           </Button>
-          {settlement.status === 'CALCULATED' && (
+          {(settlement.status === 'DRAFT' || settlement.status === 'CALCULATED') && (
             <Button
               variant="outline"
               onClick={() => setShowFinalizeModal(true)}
-              disabled={finalizeSettlement.isPending}
+              disabled={finalizeSettlement.isPending || !invoices?.length}
             >
               {finalizeSettlement.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -989,6 +972,14 @@ export default function SettlementDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {/* Unit Settlements Section - Einzelabrechnungen pro Wohneinheit */}
+      {invoices && invoices.length > 0 && (
+        <UnitSettlementsList
+          settlementId={id}
+          isFinalized={settlement.status === 'FINALIZED'}
+        />
+      )}
 
       {/* Danger Zone */}
       <Card className="border-red-200">

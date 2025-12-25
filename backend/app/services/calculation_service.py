@@ -46,12 +46,25 @@ class CalculationService:
             ManualEntry.settlement_id == settlement_id
         ).all()
 
-        # Alte Ergebnisse löschen
+        # Vor dem Löschen: Dokument-Unit-Zuordnung speichern
+        # (Dokumente mit settlement_result_id werden nach Neuberechnung wieder verknüpft)
+        from app.models.document import Document
+        doc_unit_mapping: dict[UUID, UUID] = {}  # document_id -> unit_id
+        old_results = db.query(SettlementResult).filter(
+            SettlementResult.settlement_id == settlement_id
+        ).all()
+        for old_result in old_results:
+            for doc in old_result.documents:
+                doc_unit_mapping[doc.id] = old_result.unit_id
+
+        # Alte Ergebnisse löschen (Dokumente bekommen settlement_result_id=NULL durch SET NULL FK)
         db.query(SettlementResult).filter(
             SettlementResult.settlement_id == settlement_id
         ).delete()
 
         results = []
+        # Mapping: unit_id -> neues SettlementResult für spätere Dokument-Verknüpfung
+        unit_to_result: dict[UUID, SettlementResult] = {}
 
         for unit in units:
             # Aktiven Mieter im Abrechnungszeitraum finden
@@ -162,6 +175,16 @@ class CalculationService:
                 db.add(breakdown)
 
             results.append(result)
+            unit_to_result[unit.id] = result
+
+        # Dokumente wieder mit neuen SettlementResults verknüpfen
+        if doc_unit_mapping:
+            for doc_id, unit_id in doc_unit_mapping.items():
+                if unit_id in unit_to_result:
+                    new_result = unit_to_result[unit_id]
+                    db.query(Document).filter(Document.id == doc_id).update(
+                        {"settlement_result_id": new_result.id}
+                    )
 
         # Status aktualisieren
         settlement.status = SettlementStatus.CALCULATED

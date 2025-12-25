@@ -1,5 +1,7 @@
 from typing import List
 from uuid import UUID
+import time
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,8 +12,47 @@ from app.models.settlement import Settlement
 from app.models.unit import Unit
 from app.models.enums import SettlementStatus
 from app.schemas.manual_entry import ManualEntryCreate, ManualEntryUpdate, ManualEntryResponse
+from app.services.calculation_service import CalculationService
+from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _auto_recalculate(settlement_id: UUID, db: Session) -> dict:
+    """
+    Automatische Neuberechnung der Abrechnung nach Änderungen.
+    Returns calculation metadata (duration, success).
+    """
+    result = {
+        "calculated": False,
+        "duration_ms": None,
+        "error": None,
+    }
+
+    try:
+        start_time = time.perf_counter()
+        calculation_service = CalculationService()
+        calculation_service.calculate_settlement(settlement_id, db)
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+        result["calculated"] = True
+        result["duration_ms"] = duration_ms
+
+        # Nur in DEV-Modus loggen
+        if settings.DEBUG:
+            logger.info(f"Auto-calculate for settlement {settlement_id}: {duration_ms}ms")
+
+    except ValueError as e:
+        # Erwartete Fehler (keine Units, keine Mieter, etc.)
+        result["error"] = str(e)
+        logger.warning(f"Auto-calculate warning for {settlement_id}: {e}")
+    except Exception as e:
+        # Unerwartete Fehler
+        result["error"] = f"Berechnung fehlgeschlagen: {str(e)}"
+        logger.error(f"Auto-calculate error for {settlement_id}: {e}", exc_info=True)
+
+    return result
 
 
 @router.get("", response_model=List[ManualEntryResponse])
@@ -64,6 +105,10 @@ def create_manual_entry(
     db.add(entry_obj)
     db.commit()
     db.refresh(entry_obj)
+
+    # Automatische Neuberechnung
+    _auto_recalculate(entry_in.settlement_id, db)
+
     return entry_obj
 
 
@@ -108,6 +153,10 @@ def update_manual_entry(
 
     db.commit()
     db.refresh(entry_obj)
+
+    # Automatische Neuberechnung
+    _auto_recalculate(entry_obj.settlement_id, db)
+
     return entry_obj
 
 
@@ -130,6 +179,11 @@ def delete_manual_entry(
             detail="Finalisierte Abrechnungen können nicht mehr bearbeitet werden"
         )
 
+    settlement_id = entry_obj.settlement_id
     db.delete(entry_obj)
     db.commit()
+
+    # Automatische Neuberechnung
+    _auto_recalculate(settlement_id, db)
+
     return None

@@ -3,6 +3,9 @@ from typing import List, Optional
 
 
 class Settings(BaseSettings):
+    # Debug mode (shows calculation duration in logs)
+    DEBUG: bool = False
+
     # Database
     DATABASE_URL: str = "postgresql://nebenkosten:nebenkosten_dev@localhost:5432/nebenkosten_db"
 
@@ -17,9 +20,13 @@ class Settings(BaseSettings):
     # OCR
     TESSERACT_CMD: str = "/usr/bin/tesseract"
 
-    # PDF Signing
+    # PDF Signing (Legacy - wird durch Settings ersetzt)
     SIGNING_CERT_PATH: Optional[str] = None
     SIGNING_CERT_PASSWORD: Optional[str] = None
+
+    # Encryption key for sensitive settings (e.g., certificate passwords)
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    SETTINGS_ENCRYPTION_KEY: Optional[str] = None
 
     @property
     def cors_origins_list(self) -> List[str]:

@@ -163,6 +163,9 @@ def finalize_settlement(
     db: Session = Depends(get_db)
 ):
     """Abrechnung finalisieren"""
+    from app.models.invoice import Invoice
+    from app.services.calculation_service import CalculationService
+
     settlement_obj = db.query(Settlement).filter(Settlement.id == settlement_id).first()
     if not settlement_obj:
         raise HTTPException(
@@ -170,10 +173,28 @@ def finalize_settlement(
             detail="Abrechnung nicht gefunden"
         )
 
-    if settlement_obj.status == SettlementStatus.DRAFT:
+    if settlement_obj.status == SettlementStatus.FINALIZED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Abrechnung muss zuerst berechnet werden"
+            detail="Abrechnung ist bereits finalisiert"
+        )
+
+    # Prüfen ob Rechnungen vorhanden sind
+    invoice_count = db.query(Invoice).filter(Invoice.settlement_id == settlement_id).count()
+    if invoice_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Rechnungen vorhanden - Abrechnung kann nicht finalisiert werden"
+        )
+
+    # Berechnung durchführen (sicherstellen, dass Ergebnisse aktuell sind)
+    try:
+        calculation_service = CalculationService()
+        calculation_service.calculate_settlement(settlement_id, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Berechnung fehlgeschlagen: {str(e)}"
         )
 
     settlement_obj.status = SettlementStatus.FINALIZED
@@ -238,6 +259,8 @@ def export_settlement_pdf(
 ):
     """Abrechnung als PDF exportieren"""
     from app.pdf.generator import PDFGenerator
+    from app.models.invoice import Invoice
+    from app.services.calculation_service import CalculationService
 
     settlement_obj = db.query(Settlement).filter(Settlement.id == settlement_id).first()
     if not settlement_obj:
@@ -246,10 +269,22 @@ def export_settlement_pdf(
             detail="Abrechnung nicht gefunden"
         )
 
-    if settlement_obj.status == SettlementStatus.DRAFT:
+    # Prüfen ob Rechnungen vorhanden sind
+    invoice_count = db.query(Invoice).filter(Invoice.settlement_id == settlement_id).count()
+    if invoice_count == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Abrechnung muss zuerst berechnet werden"
+            detail="Keine Rechnungen vorhanden - PDF kann nicht exportiert werden"
+        )
+
+    # Berechnung durchführen (sicherstellen, dass Ergebnisse aktuell sind)
+    try:
+        calculation_service = CalculationService()
+        calculation_service.calculate_settlement(settlement_id, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Berechnung fehlgeschlagen: {str(e)}"
         )
 
     try:

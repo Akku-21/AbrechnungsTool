@@ -21,7 +21,12 @@ from app.models.invoice import Invoice
 from app.models.settings import Settings
 from app.models.enums import COST_CATEGORY_LABELS
 from app.config import settings
-from app.services.signing_service import create_signing_service
+from app.services.signing_service import (
+    create_signature_service,
+    create_signing_service,
+    get_signature_image_base64,
+    get_signature_type,
+)
 
 
 def get_setting(db: Session, key: str, default: str = "") -> str:
@@ -44,8 +49,8 @@ class PDFGenerator:
         self.env.filters['area'] = self._format_area
         self.env.filters['round_up_even'] = self._round_up_even
 
-        # Signing Service initialisieren (falls konfiguriert)
-        self.signing_service = create_signing_service(
+        # Legacy Signing Service (wird durch DB-basierte Konfiguration ersetzt)
+        self.legacy_signing_service = create_signing_service(
             settings.SIGNING_CERT_PATH,
             settings.SIGNING_CERT_PASSWORD
         )
@@ -124,6 +129,19 @@ class PDFGenerator:
             'city': get_setting(db, 'company_city'),
         }
 
+        # Signatur-Daten für Template
+        sig_type = get_signature_type(db)
+        signature_image = None
+        signature_area = False
+
+        # Visuelle Signaturen (PAD, IMAGE, TEXT) werden direkt im HTML eingebettet
+        if sig_type in ["PAD", "IMAGE", "TEXT"]:
+            signature_image = get_signature_image_base64(db)
+            signature_area = signature_image is not None
+        # Bei CERTIFICATE wird der Signaturbereich auch angezeigt (ohne Bild)
+        elif sig_type == "CERTIFICATE":
+            signature_area = True
+
         # HTML rendern (mit Platzhaltern für Anhänge)
         html_content = template.render(
             settlement=settlement,
@@ -133,7 +151,9 @@ class PDFGenerator:
             cost_category_labels=COST_CATEGORY_LABELS,
             generated_date=date.today(),
             attachments=attachments,  # Für Link-Platzhalter
-            landlord=landlord
+            landlord=landlord,
+            signature_area=signature_area,
+            signature_image=signature_image,
         )
 
         # CSS laden
@@ -153,10 +173,25 @@ class PDFGenerator:
         else:
             pdf_bytes = main_pdf_bytes
 
-        # Digital signieren (falls konfiguriert)
-        if self.signing_service:
+        # Kryptographische Signatur (nur bei CERTIFICATE-Typ)
+        # Visuelle Signaturen sind bereits im HTML eingebettet
+        if sig_type == "CERTIFICATE":
+            signing_service = create_signature_service(db)
+
+            if signing_service is None:
+                # Fallback auf Legacy-Konfiguration (Umgebungsvariablen)
+                signing_service = self.legacy_signing_service
+
+            if signing_service:
+                period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
+                pdf_bytes = signing_service.apply_signature(
+                    pdf_bytes,
+                    reason=f"Nebenkostenabrechnung {period_label}"
+                )
+        elif sig_type == "NONE" and self.legacy_signing_service:
+            # Legacy-Fallback für Umgebungsvariablen-Konfiguration
             period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
-            pdf_bytes = self.signing_service.sign_pdf(
+            pdf_bytes = self.legacy_signing_service.apply_signature(
                 pdf_bytes,
                 reason=f"Nebenkostenabrechnung {period_label}"
             )
@@ -291,3 +326,156 @@ class PDFGenerator:
         if rounded % 2 != 0:
             rounded += 1
         return rounded
+
+    def generate_unit_settlement_pdf(
+        self,
+        unit_settlement_id: UUID,
+        db: Session
+    ) -> bytes:
+        """Generiere PDF für eine einzelne Wohneinheit/Mieter"""
+        # SettlementResult laden
+        result = db.query(SettlementResult).filter(
+            SettlementResult.id == unit_settlement_id
+        ).first()
+
+        if not result:
+            raise ValueError(f"Einzelabrechnung nicht gefunden: {unit_settlement_id}")
+
+        settlement = db.query(Settlement).filter(
+            Settlement.id == result.settlement_id
+        ).first()
+
+        if not settlement:
+            raise ValueError("Abrechnung nicht gefunden")
+
+        # Breakdowns laden
+        breakdowns = db.query(SettlementCostBreakdown).filter(
+            SettlementCostBreakdown.settlement_result_id == result.id
+        ).all()
+
+        # Template laden
+        template = self.env.get_template("settlement.html")
+
+        # Daten für Template aufbereiten (nur diese eine Unit)
+        property_obj = settlement.property_ref
+        results_data = [{
+            'unit': result.unit,
+            'tenant': result.tenant,
+            'total_costs': result.total_costs,
+            'total_prepayments': result.total_prepayments,
+            'balance': result.balance,
+            'occupancy_days': result.occupancy_days,
+            'breakdowns': breakdowns
+        }]
+
+        # Rechnungen für Übersicht laden (nur anteilig für diese Unit)
+        invoices = db.query(Invoice).filter(
+            Invoice.settlement_id == result.settlement_id
+        ).order_by(Invoice.cost_category, Invoice.invoice_date).all()
+
+        # Rechnungsdaten aufbereiten
+        invoices_data = []
+        for inv in invoices:
+            allocation = float(inv.allocation_percentage) if inv.allocation_percentage else 1.0
+            invoices_data.append({
+                'vendor_name': inv.vendor_name,
+                'invoice_number': inv.invoice_number,
+                'invoice_date': inv.invoice_date,
+                'cost_category': inv.cost_category,
+                'total_amount': inv.total_amount,
+                'allocation_percentage': allocation,
+                'allocated_amount': inv.total_amount * Decimal(str(allocation)),
+                'document_id': str(inv.document_id) if inv.document_id else None
+            })
+
+        # Anhänge laden:
+        # 1. Unit-spezifische Dokumente (settlement_result_id = diese Unit)
+        # 2. Optional: Settlement-weite Dokumente die include_in_export haben
+        unit_attachments = db.query(Document).filter(
+            Document.settlement_result_id == unit_settlement_id,
+            Document.include_in_export == True
+        ).order_by(Document.upload_date).all()
+
+        # Settlement-weite Dokumente auch mit einbeziehen (die mit include_in_export)
+        settlement_attachments = db.query(Document).filter(
+            Document.settlement_id == result.settlement_id,
+            Document.settlement_result_id == None,  # Nur Settlement-weite
+            Document.include_in_export == True
+        ).order_by(Document.upload_date).all()
+
+        attachments = list(settlement_attachments) + list(unit_attachments)
+
+        # Vermieter-Daten aus Einstellungen laden
+        landlord = {
+            'name': get_setting(db, 'company_name'),
+            'street': get_setting(db, 'company_street'),
+            'postal_code': get_setting(db, 'company_postal_code'),
+            'city': get_setting(db, 'company_city'),
+        }
+
+        # Signatur-Daten für Template
+        sig_type = get_signature_type(db)
+        signature_image = None
+        signature_area = False
+
+        if sig_type in ["PAD", "IMAGE", "TEXT"]:
+            signature_image = get_signature_image_base64(db)
+            signature_area = signature_image is not None
+        elif sig_type == "CERTIFICATE":
+            signature_area = True
+
+        # HTML rendern
+        html_content = template.render(
+            settlement=settlement,
+            property=property_obj,
+            results=results_data,
+            invoices=invoices_data,
+            cost_category_labels=COST_CATEGORY_LABELS,
+            generated_date=date.today(),
+            attachments=attachments,
+            landlord=landlord,
+            signature_area=signature_area,
+            signature_image=signature_image,
+            # Zusätzliche Info für Einzel-PDF
+            is_single_unit=True,
+            unit_notes=result.notes,
+        )
+
+        # CSS laden
+        css_path = Path(__file__).parent / "templates" / "styles.css"
+        css = CSS(filename=str(css_path)) if css_path.exists() else None
+
+        # PDF generieren
+        html = HTML(string=html_content)
+
+        if css:
+            main_pdf_bytes = html.write_pdf(stylesheets=[css])
+        else:
+            main_pdf_bytes = html.write_pdf()
+
+        if attachments:
+            pdf_bytes = self._merge_pdfs_with_attachments(main_pdf_bytes, attachments)
+        else:
+            pdf_bytes = main_pdf_bytes
+
+        # Kryptographische Signatur
+        if sig_type == "CERTIFICATE":
+            signing_service = create_signature_service(db)
+            if signing_service is None:
+                signing_service = self.legacy_signing_service
+
+            if signing_service:
+                period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
+                unit_label = result.unit.designation
+                pdf_bytes = signing_service.apply_signature(
+                    pdf_bytes,
+                    reason=f"Nebenkostenabrechnung {period_label} - {unit_label}"
+                )
+        elif sig_type == "NONE" and self.legacy_signing_service:
+            period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
+            pdf_bytes = self.legacy_signing_service.apply_signature(
+                pdf_bytes,
+                reason=f"Nebenkostenabrechnung {period_label}"
+            )
+
+        return pdf_bytes

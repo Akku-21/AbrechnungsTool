@@ -13,6 +13,7 @@ from app.models.enums import CostCategory
 if TYPE_CHECKING:
     from app.models.settlement import Settlement
     from app.models.document import Document
+    from app.models.unit import Unit
 
 
 class Invoice(Base):
@@ -27,6 +28,10 @@ class Invoice(Base):
     )
     document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    # Optional: Unit-spezifische Rechnung (NULL = gilt für gesamte Liegenschaft)
+    unit_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("units.id", ondelete="CASCADE"), nullable=True
     )
 
     vendor_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -53,6 +58,7 @@ class Invoice(Base):
     # Relationships
     settlement: Mapped["Settlement"] = relationship("Settlement", back_populates="invoices")
     document: Mapped[Optional["Document"]] = relationship("Document", back_populates="invoice")
+    unit: Mapped[Optional["Unit"]] = relationship("Unit", backref="invoices")
     line_items: Mapped[List["LineItem"]] = relationship("LineItem", back_populates="invoice", cascade="all, delete-orphan")
 
 

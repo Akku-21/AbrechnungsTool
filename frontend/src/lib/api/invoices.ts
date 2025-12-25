@@ -2,8 +2,15 @@ import { apiClient } from './client'
 import { Invoice, InvoiceCreate, InvoiceUpdate } from '@/types'
 
 export const invoicesApi = {
-  list: async (settlementId?: string): Promise<Invoice[]> => {
-    const params = settlementId ? { settlement_id: settlementId } : {}
+  list: async (options?: {
+    settlementId?: string
+    unitId?: string
+    includeSettlementWide?: boolean
+  }): Promise<Invoice[]> => {
+    const params: Record<string, string | boolean> = {}
+    if (options?.settlementId) params.settlement_id = options.settlementId
+    if (options?.unitId) params.unit_id = options.unitId
+    if (options?.includeSettlementWide !== undefined) params.include_settlement_wide = options.includeSettlementWide
     const response = await apiClient.get('/invoices', { params })
     return response.data
   },

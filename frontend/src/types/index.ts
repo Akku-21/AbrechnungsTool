@@ -273,6 +273,7 @@ export interface Invoice {
   id: string
   settlement_id: string
   document_id?: string
+  unit_id?: string  // NULL = Settlement-weit, gesetzt = Unit-spezifisch
   vendor_name: string
   invoice_number?: string
   invoice_date?: string
@@ -290,6 +291,7 @@ export interface Invoice {
 export interface InvoiceCreate {
   settlement_id: string
   document_id?: string
+  unit_id?: string  // NULL = Settlement-weit, gesetzt = Unit-spezifisch
   vendor_name: string
   invoice_number?: string
   invoice_date?: string
@@ -352,4 +354,110 @@ export interface ManualEntryUpdate {
   cost_category?: CostCategory
   notes?: string
   unit_id?: string
+}
+
+// Signature Types
+export type SignatureType = 'NONE' | 'CERTIFICATE' | 'PAD' | 'IMAGE' | 'TEXT'
+export type TextFontStyle = 'HANDWRITING' | 'SERIF' | 'SANS'
+
+export interface SignatureSettings {
+  signature_type: SignatureType
+  configured: boolean
+  certificate_uploaded: boolean
+  certificate_filename?: string
+  signature_image_uploaded: boolean
+  signature_text?: string
+  signature_text_font?: TextFontStyle
+}
+
+export interface SignatureTypeUpdate {
+  signature_type: SignatureType
+}
+
+export interface SignatureTextUpdate {
+  text: string
+  font: TextFontStyle
+}
+
+export interface SignaturePadSave {
+  image_data: string
+}
+
+export const SIGNATURE_TYPE_LABELS: Record<SignatureType, string> = {
+  NONE: 'Keine Signatur',
+  CERTIFICATE: 'Digitales Zertifikat (PKCS#12)',
+  PAD: 'Gezeichnete Unterschrift',
+  IMAGE: 'Unterschriftsbild',
+  TEXT: 'Text-Signatur',
+}
+
+export const TEXT_FONT_LABELS: Record<TextFontStyle, string> = {
+  HANDWRITING: 'Handschrift (Kursiv)',
+  SERIF: 'Serif (Times)',
+  SANS: 'Sans-Serif (Arial)',
+}
+
+// Unit Settlement Types (Einzelabrechnung)
+export type AllocationMethod =
+  | 'WOHNFLAECHE'
+  | 'PERSONENZAHL'
+  | 'EINHEIT'
+  | 'VERBRAUCH'
+  | 'MITEIGENTUMSANTEIL'
+
+export interface UnitBrief {
+  id: string
+  designation: string
+  area_sqm: number
+}
+
+export interface TenantBrief {
+  id: string
+  salutation?: string
+  first_name: string
+  last_name: string
+  full_name: string
+}
+
+export interface DocumentBrief {
+  id: string
+  original_filename: string
+  mime_type: string
+  document_status: DocumentStatus
+  upload_date: string
+}
+
+export interface CostBreakdown {
+  cost_category: CostCategory
+  total_property_cost: number
+  allocation_percentage: number
+  allocated_amount: number
+  allocation_method: AllocationMethod
+}
+
+export interface UnitSettlement {
+  id: string
+  settlement_id: string
+  unit_id: string
+  tenant_id: string
+  total_costs: number
+  total_prepayments: number
+  balance: number  // Positiv = Nachzahlung, Negativ = Guthaben
+  occupancy_days: number
+  notes?: string
+  unit: UnitBrief
+  tenant: TenantBrief
+  cost_breakdowns: CostBreakdown[]
+  documents: DocumentBrief[]
+  created_at: string
+}
+
+export interface UnitSettlementUpdate {
+  notes?: string
+}
+
+export interface UnitSettlementListResponse {
+  unit_settlements: UnitSettlement[]
+  total_costs: number
+  total_balance: number
 }

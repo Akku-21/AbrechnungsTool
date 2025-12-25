@@ -43,6 +43,7 @@ class InvoiceBase(BaseModel):
 class InvoiceCreate(InvoiceBase):
     settlement_id: UUID
     document_id: Optional[UUID] = None
+    unit_id: Optional[UUID] = None  # NULL = Settlement-weit, gesetzt = Unit-spezifisch
     line_items: List[LineItemCreate] = []
 
 
@@ -64,6 +65,7 @@ class InvoiceResponse(InvoiceBase):
     id: UUID
     settlement_id: UUID
     document_id: Optional[UUID] = None
+    unit_id: Optional[UUID] = None
     is_verified: bool
     created_at: datetime
     updated_at: datetime

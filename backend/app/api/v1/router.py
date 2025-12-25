@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import properties, units, tenants, settlements, documents, invoices, manual_entries, settings
+from app.api.v1.endpoints import properties, units, tenants, settlements, documents, invoices, manual_entries, settings, unit_settlements
 
 api_router = APIRouter()
 
@@ -12,3 +12,5 @@ api_router.include_router(documents.router, prefix="/documents", tags=["Document
 api_router.include_router(invoices.router, prefix="/invoices", tags=["Invoices"])
 api_router.include_router(manual_entries.router, prefix="/manual-entries", tags=["Manual Entries"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
+# Unit Settlements hat eigene Prefix-Struktur (sowohl /settlements/{id}/unit-settlements als auch /unit-settlements/{id})
+api_router.include_router(unit_settlements.router, prefix="", tags=["Unit Settlements"])

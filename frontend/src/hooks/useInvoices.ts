@@ -2,11 +2,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoicesApi } from '@/lib/api/invoices'
 import { InvoiceCreate, InvoiceUpdate } from '@/types'
 
-export function useInvoices(settlementId?: string) {
+export function useInvoices(options?: {
+  settlementId?: string
+  unitId?: string
+  includeSettlementWide?: boolean
+}) {
   return useQuery({
-    queryKey: ['invoices', { settlementId }],
-    queryFn: () => invoicesApi.list(settlementId),
-    enabled: !!settlementId,
+    queryKey: ['invoices', options],
+    queryFn: () => invoicesApi.list(options),
+    enabled: !!(options?.settlementId || options?.unitId),
   })
 }
 
@@ -23,8 +27,11 @@ export function useCreateInvoice() {
 
   return useMutation({
     mutationFn: (data: InvoiceCreate) => invoicesApi.create(data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices', { settlementId: variables.settlement_id }] })
+    onSuccess: () => {
+      // Invalidate all invoice queries (settlement-wide and unit-specific)
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      // Also invalidate unit settlements since calculation is auto-triggered
+      queryClient.invalidateQueries({ queryKey: ['unit-settlements'] })
     },
   })
 }
@@ -49,6 +56,7 @@ export function useDeleteInvoice() {
     mutationFn: (id: string) => invoicesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['unit-settlements'] })
     },
   })
 }

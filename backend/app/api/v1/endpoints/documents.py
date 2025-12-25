@@ -334,14 +334,16 @@ def list_settlement_documents(
     settlement_id: UUID,
     db: Session = Depends(get_db)
 ):
-    """Dokumente einer Abrechnung abrufen"""
+    """Dokumente einer Abrechnung abrufen (nur Settlement-weite, keine Unit-spezifischen)"""
     settlement_obj = db.query(Settlement).filter(Settlement.id == settlement_id).first()
     if not settlement_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Abrechnung nicht gefunden"
         )
-    return settlement_obj.documents
+    # Nur Settlement-weite Dokumente (ohne settlement_result_id)
+    # Unit-spezifische Dokumente werden nicht nach oben vererbt
+    return [doc for doc in settlement_obj.documents if doc.settlement_result_id is None]
 
 
 @router.post("/settlement/{settlement_id}", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)

@@ -12,6 +12,7 @@ from app.models.enums import DocumentStatus, CostCategory
 
 if TYPE_CHECKING:
     from app.models.settlement import Settlement
+    from app.models.settlement_result import SettlementResult
     from app.models.invoice import Invoice
 
 
@@ -24,6 +25,11 @@ class Document(Base):
     )
     settlement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("settlements.id", ondelete="CASCADE"), nullable=False
+    )
+    # Optional: Unit-spezifisches Dokument (NULL = Settlement-weit)
+    # SET NULL bei Löschung: Dokumente bleiben erhalten wenn SettlementResult neu berechnet wird
+    settlement_result_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("settlement_results.id", ondelete="SET NULL"), nullable=True
     )
 
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -61,6 +67,9 @@ class Document(Base):
 
     # Relationships
     settlement: Mapped["Settlement"] = relationship("Settlement", back_populates="documents")
+    settlement_result: Mapped[Optional["SettlementResult"]] = relationship(
+        "SettlementResult", back_populates="documents"
+    )
     invoice: Mapped[Optional["Invoice"]] = relationship("Invoice", back_populates="document", uselist=False)
 
     @property

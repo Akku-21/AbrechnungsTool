@@ -202,6 +202,43 @@
         .document-link:hover {
             color: #004499;
         }
+
+        /* Signatur-Bereich */
+        .signature-section {
+            margin-top: 15mm;
+            padding-top: 10mm;
+            page-break-inside: avoid;
+        }
+
+        .signature-line {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-bottom: 5mm;
+        }
+
+        .signature-placeholder {
+            min-width: 60mm;
+            min-height: 20mm;
+            border-bottom: 1px solid #333;
+            margin-bottom: 2mm;
+        }
+
+        .signature-placeholder img {
+            max-width: 60mm;
+            max-height: 25mm;
+            object-fit: contain;
+        }
+
+        .signature-label {
+            font-size: 8pt;
+            color: #666;
+        }
+
+        .signature-date {
+            margin-top: 3mm;
+            font-size: 10pt;
+        }
     </style>
 </head>
 <body>
@@ -374,6 +411,22 @@
         </div>
     </section>
     {% endfor %}
+
+    {% if signature_area %}
+    <section class="signature-section">
+        <div class="signature-line">
+            <div class="signature-placeholder" id="signature-placeholder">
+                {% if signature_image %}
+                <img src="{{ signature_image }}" alt="Unterschrift" />
+                {% endif %}
+            </div>
+            <div class="signature-label">Unterschrift Vermieter</div>
+        </div>
+        <div class="signature-date">
+            <span>{{ landlord.city or 'Ort' }}, {{ generated_date|german_date }}</span>
+        </div>
+    </section>
+    {% endif %}
 
     <footer>
         <p>Erstellt am: {{ generated_date|german_date }}</p>

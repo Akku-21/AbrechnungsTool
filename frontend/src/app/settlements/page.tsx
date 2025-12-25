@@ -8,14 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { FileText, Plus, Trash2, Eye, Download, CheckCircle, Clock, FileCheck, Building2, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { FileText, Plus, Trash2, Download, CheckCircle, Clock, Building2, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { fuzzyFilter } from '@/lib/fuzzySearch'
 import { SettlementStatus, Property, Settlement } from '@/types'
 
 const statusConfig: Record<SettlementStatus, { label: string; color: string; icon: React.ComponentType<any> }> = {
   DRAFT: { label: 'Entwurf', color: 'bg-gray-100 text-gray-800', icon: Clock },
-  CALCULATED: { label: 'Berechnet', color: 'bg-blue-100 text-blue-800', icon: FileCheck },
+  CALCULATED: { label: 'Entwurf', color: 'bg-gray-100 text-gray-800', icon: Clock },  // Legacy, wie DRAFT
   FINALIZED: { label: 'Finalisiert', color: 'bg-green-100 text-green-800', icon: CheckCircle },
   EXPORTED: { label: 'Exportiert', color: 'bg-purple-100 text-purple-800', icon: Download },
 }
@@ -296,11 +296,13 @@ export default function SettlementsPage() {
                       {group.settlements.map((settlement) => {
                         const status = statusConfig[settlement.status]
                         const StatusIcon = status.icon
+                        const canDelete = settlement.status === 'DRAFT' || settlement.status === 'CALCULATED'
 
                         return (
-                          <div
+                          <Link
                             key={settlement.id}
-                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                            href={`/settlements/${settlement.id}`}
+                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors block"
                           >
                             <div className="flex items-center gap-4">
                               <div className="p-2 bg-gray-100 rounded-lg">
@@ -320,29 +322,23 @@ export default function SettlementsPage() {
                                 <StatusIcon className="h-4 w-4" />
                                 {status.label}
                               </div>
-                              <div className="flex gap-2">
-                                <Link href={`/settlements/${settlement.id}`}>
-                                  <Button variant="outline" size="sm">
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    Details
-                                  </Button>
-                                </Link>
-                                {settlement.status === 'DRAFT' && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleDelete(settlement.id, settlement.period_label)
-                                    }}
-                                    disabled={deleteSettlement.isPending}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                )}
-                              </div>
+                              {canDelete && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    handleDelete(settlement.id, settlement.period_label)
+                                  }}
+                                  disabled={deleteSettlement.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              )}
+                              <ChevronRight className="h-5 w-5 text-muted-foreground" />
                             </div>
-                          </div>
+                          </Link>
                         )
                       })}
                     </div>

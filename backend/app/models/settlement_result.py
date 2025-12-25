@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Integer, DateTime, Numeric, ForeignKey, Enum, JSON, UniqueConstraint, func
+from sqlalchemy import Integer, DateTime, Numeric, ForeignKey, Enum, JSON, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.settlement import Settlement
     from app.models.unit import Unit
     from app.models.tenant import Tenant
+    from app.models.document import Document
 
 
 class SettlementResult(Base):
@@ -43,6 +44,9 @@ class SettlementResult(Base):
 
     calculation_details: Mapped[dict] = mapped_column(JSON, nullable=True)
 
+    # Unit-spezifische Notizen
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -53,6 +57,10 @@ class SettlementResult(Base):
     tenant: Mapped["Tenant"] = relationship("Tenant")
     cost_breakdowns: Mapped[List["SettlementCostBreakdown"]] = relationship(
         "SettlementCostBreakdown", back_populates="settlement_result", cascade="all, delete-orphan"
+    )
+    # Unit-spezifische Dokumente (ohne delete-orphan damit Dokumente bei Neuberechnung erhalten bleiben)
+    documents: Mapped[List["Document"]] = relationship(
+        "Document", back_populates="settlement_result"
     )
 
     @property
