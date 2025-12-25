@@ -3,6 +3,7 @@ import {
   UnitSettlement,
   UnitSettlementUpdate,
   UnitSettlementListResponse,
+  Document,
 } from '@/types'
 
 export const unitSettlementsApi = {
@@ -27,6 +28,14 @@ export const unitSettlementsApi = {
    */
   update: async (id: string, data: UnitSettlementUpdate): Promise<UnitSettlement> => {
     const response = await apiClient.patch(`/unit-settlements/${id}`, data)
+    return response.data
+  },
+
+  /**
+   * Dokumente einer Einzelabrechnung abrufen
+   */
+  listDocuments: async (id: string): Promise<Document[]> => {
+    const response = await apiClient.get(`/unit-settlements/${id}/documents`)
     return response.data
   },
 

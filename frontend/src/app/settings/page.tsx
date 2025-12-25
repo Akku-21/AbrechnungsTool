@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Label'
-import { Shield, Building2, Loader2, Check, Sparkles, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Building2, Loader2, Check, Sparkles, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useSettings, useUpdateSettings, useRecommendedModels, useTestOpenRouter } from '@/hooks/useSettings'
+import { SignatureConfig } from '@/components/signature'
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useSettings()
@@ -311,44 +312,8 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* PDF-Signatur Status */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Shield className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <CardTitle>PDF-Signatur</CardTitle>
-                <CardDescription>Digitale Signatur fuer exportierte PDFs</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium">Status:</span>
-              {settings?.signing_enabled ? (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Aktiv
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                  Nicht konfiguriert
-                </span>
-              )}
-            </div>
-            {settings?.signing_enabled && settings.signing_cert_path && (
-              <div className="text-sm text-muted-foreground">
-                <p>Zertifikat: <code className="bg-gray-100 px-1 rounded">{settings.signing_cert_path}</code></p>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {settings?.signing_enabled
-                ? 'PDFs werden automatisch bei Export digital signiert.'
-                : 'Um PDFs zu signieren, konfigurieren Sie SIGNING_CERT_PATH und SIGNING_CERT_PASSWORD in den Umgebungsvariablen.'}
-            </p>
-          </CardContent>
-        </Card>
+        {/* PDF-Signatur Konfiguration */}
+        <SignatureConfig />
       </div>
     </div>
   )

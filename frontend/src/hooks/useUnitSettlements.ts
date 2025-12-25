@@ -25,6 +25,17 @@ export function useUnitSettlement(id: string) {
 }
 
 /**
+ * Dokumente einer Einzelabrechnung abrufen
+ */
+export function useUnitSettlementDocuments(unitSettlementId: string) {
+  return useQuery({
+    queryKey: ['unit-settlements', unitSettlementId, 'documents'],
+    queryFn: () => unitSettlementsApi.listDocuments(unitSettlementId),
+    enabled: !!unitSettlementId,
+  })
+}
+
+/**
  * Einzelabrechnung aktualisieren (Notes)
  */
 export function useUpdateUnitSettlement() {
@@ -56,6 +67,7 @@ export function useUploadUnitSettlementDocument() {
     onSuccess: (_, { id }) => {
       // Cache invalidieren damit die Dokumente neu geladen werden
       queryClient.invalidateQueries({ queryKey: ['unit-settlements', id] })
+      queryClient.invalidateQueries({ queryKey: ['unit-settlements', id, 'documents'] })
     },
   })
 }

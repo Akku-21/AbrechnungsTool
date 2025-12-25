@@ -425,6 +425,8 @@ export interface DocumentBrief {
   mime_type: string
   document_status: DocumentStatus
   upload_date: string
+  include_in_export: boolean
+  file_size_mb?: number
 }
 
 export interface CostBreakdown {

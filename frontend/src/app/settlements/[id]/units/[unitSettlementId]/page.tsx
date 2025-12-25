@@ -1,8 +1,7 @@
 'use client'
 
-import { use, useState, useRef, useCallback, useEffect } from 'react'
+import { use, useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { useDropzone } from 'react-dropzone'
 import {
   ArrowLeft,
   Upload,
@@ -15,6 +14,8 @@ import {
   Loader2,
   Save,
   Edit,
+  Eye,
+  FileSearch,
   Building2,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -35,28 +36,26 @@ import {
   useUpdateUnitSettlement,
   useUploadUnitSettlementDocument,
   useExportUnitSettlementPdf,
+  useUnitSettlementDocuments,
 } from '@/hooks/useUnitSettlements'
 import { useSettlement } from '@/hooks/useSettlements'
 import { useInvoices, useCreateInvoice, useDeleteInvoice } from '@/hooks/useInvoices'
-import { useDocuments } from '@/hooks/useDocuments'
-import { COST_CATEGORY_LABELS, CostCategory, InvoiceCreate } from '@/types'
-import { formatDate, formatCurrency } from '@/lib/utils'
+import {
+  useDocuments,
+  useProcessDocument,
+  useUpdateDocument,
+  useDeleteDocument,
+} from '@/hooks/useDocuments'
+import { useDocumentPolling } from '@/hooks/useDocumentPolling'
+import { useFileDragDrop } from '@/hooks/useFileDragDrop'
+import { useConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/hooks/useToast'
+import { OcrModal } from '@/components/documents/OcrModal'
+import { DocumentCard } from '@/components/documents/DocumentCard'
+import { COST_CATEGORY_LABELS, CostCategory, InvoiceCreate, Document } from '@/types'
+import { formatDate, formatCurrency, getDocumentsWithInvoices } from '@/lib/utils'
 import { invoicesApi } from '@/lib/api/invoices'
-
-const ACCEPTED_FILE_TYPES = [
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-]
-
-const ALLOCATION_METHOD_LABELS: Record<string, string> = {
-  WOHNFLAECHE: 'Wohnfläche',
-  PERSONENZAHL: 'Personenzahl',
-  EINHEIT: 'Pro Einheit',
-  VERBRAUCH: 'Verbrauch',
-  MITEIGENTUMSANTEIL: 'MEA',
-}
+import { ALLOCATION_METHOD_LABELS, isValidFileType, DOC_STATUS_CONFIG } from '@/lib/constants'
 
 function formatEuro(amount: number): string {
   return new Intl.NumberFormat('de-DE', {
@@ -76,11 +75,26 @@ export default function UnitSettlementDetailPage({
 }) {
   const { id: settlementId, unitSettlementId } = use(params)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { confirm, ConfirmDialog } = useConfirmDialog()
+  const { toast } = useToast()
 
   // Data fetching
   const { data: settlement } = useSettlement(settlementId)
-  const { data: unitSettlement, isLoading } = useUnitSettlement(unitSettlementId)
-  const { data: settlementDocuments } = useDocuments(settlementId)
+  const { data: unitSettlement, isLoading, refetch: refetchUnitSettlement } = useUnitSettlement(unitSettlementId)
+  const { data: settlementDocuments, refetch: refetchSettlementDocs } = useDocuments(settlementId)
+  // Only fetch unit documents after unit settlement is loaded to avoid 404 errors
+  const { data: unitDocuments = [], refetch: refetchUnitDocs } = useUnitSettlementDocuments(
+    unitSettlement ? unitSettlementId : ''
+  )
+
+  // Combine all documents for polling
+  const allDocuments = useMemo(() =>
+    [...(settlementDocuments || []), ...unitDocuments],
+    [settlementDocuments, unitDocuments]
+  )
+
+  // Auto-refresh documents while any are processing
+  useDocumentPolling(allDocuments, [refetchSettlementDocs, refetchUnitDocs])
 
   // Get invoices - both settlement-wide and unit-specific
   // Only fetch when we have the unit_id from unitSettlement
@@ -98,7 +112,6 @@ export default function UnitSettlementDetailPage({
   const [notes, setNotes] = useState('')
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([])
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [defaultAllocation, setDefaultAllocation] = useState<number>(1.0)
@@ -113,14 +126,27 @@ export default function UnitSettlementDetailPage({
     allocation_percentage: 1.0,
   })
 
+  // OCR Modal State
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+  const [showOcrModal, setShowOcrModal] = useState(false)
+
   // Mutations
   const updateMutation = useUpdateUnitSettlement()
   const uploadMutation = useUploadUnitSettlementDocument()
   const exportPdfMutation = useExportUnitSettlementPdf()
   const createInvoice = useCreateInvoice()
   const deleteInvoice = useDeleteInvoice()
+  const processDocument = useProcessDocument()
+  const updateDocument = useUpdateDocument()
+  const deleteDocument = useDeleteDocument()
 
   const isFinalized = settlement?.status === 'FINALIZED'
+
+  // Compute documents with invoices
+  const documentsWithInvoices = useMemo(
+    () => getDocumentsWithInvoices(allInvoices),
+    [allInvoices]
+  )
 
   // Sync notes state when data loads
   useEffect(() => {
@@ -173,8 +199,26 @@ export default function UnitSettlementDetailPage({
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error('PDF export failed:', err)
+    } catch (error: unknown) {
+      console.error('PDF export failed:', error)
+      const axiosError = error as { response?: { status?: number; data?: { detail?: string } } }
+      if (axiosError.response?.status === 404) {
+        toast({
+          title: 'Fehler',
+          message: 'Diese Einzelabrechnung existiert nicht mehr. Die Seite wird neu geladen.',
+          variant: 'destructive',
+        })
+        // Redirect to settlement page after short delay
+        setTimeout(() => {
+          window.location.href = `/settlements/${settlementId}`
+        }, 2000)
+      } else {
+        toast({
+          title: 'Fehler',
+          message: axiosError.response?.data?.detail || 'PDF-Export fehlgeschlagen',
+          variant: 'destructive',
+        })
+      }
     } finally {
       setIsExporting(false)
     }
@@ -182,13 +226,7 @@ export default function UnitSettlementDetailPage({
 
   const handleFilesUpload = useCallback(async (files: File[]) => {
     if (!unitSettlement) return
-    const validFiles = files.filter(file =>
-      ACCEPTED_FILE_TYPES.includes(file.type) ||
-      file.name.toLowerCase().endsWith('.pdf') ||
-      file.name.toLowerCase().endsWith('.png') ||
-      file.name.toLowerCase().endsWith('.jpg') ||
-      file.name.toLowerCase().endsWith('.jpeg')
-    )
+    const validFiles = files.filter(isValidFileType)
 
     for (const file of validFiles) {
       setUploadingFiles(prev => [...prev, file.name])
@@ -200,7 +238,9 @@ export default function UnitSettlementDetailPage({
         setUploadingFiles(prev => prev.filter(name => name !== file.name))
       }
     }
-  }, [unitSettlement, uploadMutation])
+    // Refetch to ensure latest document status is shown
+    refetchUnitDocs()
+  }, [unitSettlement, uploadMutation, refetchUnitDocs])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -212,35 +252,8 @@ export default function UnitSettlementDetailPage({
     }
   }
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.currentTarget === e.target) {
-      setIsDragging(false)
-    }
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      await handleFilesUpload(files)
-    }
-  }, [handleFilesUpload])
+  // Drag & drop hook
+  const { isDragging, dragHandlers } = useFileDragDrop(handleFilesUpload)
 
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -263,8 +276,74 @@ export default function UnitSettlementDetailPage({
   }
 
   const handleDeleteInvoice = async (invoiceId: string) => {
-    if (confirm('Möchten Sie diese Rechnung wirklich löschen?')) {
+    const confirmed = await confirm({
+      title: 'Rechnung löschen',
+      message: 'Möchten Sie diese Rechnung wirklich löschen?',
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
       await deleteInvoice.mutateAsync(invoiceId)
+    }
+  }
+
+  // OCR Handlers
+  const handleProcessDocument = async (docId: string) => {
+    try {
+      await processDocument.mutateAsync(docId)
+      // Immediately refetch to show PROCESSING status
+      refetchUnitDocs()
+      refetchSettlementDocs()
+      toast({
+        title: 'OCR gestartet',
+        message: 'Das Dokument wird verarbeitet.',
+        variant: 'success',
+      })
+    } catch (error: unknown) {
+      // Extract backend error message from axios error
+      const axiosError = error as { response?: { data?: { detail?: string } } }
+      const errorMessage = axiosError.response?.data?.detail ||
+        (error instanceof Error ? error.message : 'Das Dokument konnte nicht verarbeitet werden.')
+      toast({
+        title: 'Fehler',
+        message: errorMessage,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleShowOcrDetails = (doc: Document) => {
+    setSelectedDocument(doc)
+    setShowOcrModal(true)
+  }
+
+  const handleCloseOcrModal = () => {
+    setShowOcrModal(false)
+    setSelectedDocument(null)
+  }
+
+  const handleOcrInvoiceCreated = () => {
+    // Refresh invoices and documents after creating invoice from OCR
+    refetchUnitDocs()
+  }
+
+  const handleToggleIncludeInExport = async (documentId: string, currentValue: boolean) => {
+    await updateDocument.mutateAsync({
+      id: documentId,
+      data: { include_in_export: !currentValue }
+    })
+  }
+
+  const handleDeleteDocument = async (docId: string) => {
+    const confirmed = await confirm({
+      title: 'Dokument löschen',
+      message: 'Möchten Sie dieses Dokument wirklich löschen?',
+      confirmLabel: 'Löschen',
+      variant: 'destructive',
+    })
+    if (confirmed) {
+      await deleteDocument.mutateAsync(docId)
+      refetchUnitDocs()
     }
   }
 
@@ -272,9 +351,8 @@ export default function UnitSettlementDetailPage({
   const settlementWideInvoices = allInvoices?.filter(inv => !inv.unit_id) || []
   const unitSpecificInvoices = allInvoices?.filter(inv => inv.unit_id === unitSettlement?.unit_id) || []
 
-  // All documents (settlement-wide + unit-specific)
-  const unitDocuments = unitSettlement?.documents || []
-  const allDocuments = [...(settlementDocuments || []), ...unitDocuments]
+  // Inherited documents from settlement (filtered to not include unit-specific ones)
+  const inheritedDocuments = settlementDocuments || []
 
   if (isLoading) {
     return (
@@ -286,8 +364,20 @@ export default function UnitSettlementDetailPage({
 
   if (!unitSettlement) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-destructive">Einzelabrechnung nicht gefunden</p>
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <AlertCircle className="h-12 w-12 text-muted-foreground" />
+        <div className="text-center">
+          <p className="text-lg font-medium text-destructive">Einzelabrechnung nicht gefunden</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Diese Abrechnung existiert nicht mehr. Möglicherweise wurde die Abrechnung neu berechnet.
+          </p>
+        </div>
+        <Link href={`/settlements/${settlementId}`}>
+          <Button variant="outline">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Zurück zur Abrechnung
+          </Button>
+        </Link>
       </div>
     )
   }
@@ -426,10 +516,7 @@ export default function UnitSettlementDetailPage({
           {/* Drag & Drop Zone */}
           {!isFinalized && (
             <div
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
+              {...dragHandlers}
               onClick={() => fileInputRef.current?.click()}
               className={`
                 mb-4 p-8 border-2 border-dashed rounded-lg cursor-pointer
@@ -472,44 +559,109 @@ export default function UnitSettlementDetailPage({
           ) : (
             <div className="space-y-3">
               {/* Unit-specific documents */}
-              {unitDocuments.map((doc) => (
-                <div
-                  key={doc.id}
-                  className="flex items-center justify-between p-3 border rounded-lg bg-primary/5 border-primary/20"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="font-medium text-sm">{doc.original_filename}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(doc.upload_date).toLocaleDateString('de-DE')} •{' '}
-                        <span className="text-primary">Unit-spezifisch</span>
-                      </p>
+              {unitDocuments.map((doc) => {
+                const docStatus = DOC_STATUS_CONFIG[doc.document_status] || DOC_STATUS_CONFIG.PENDING
+                const hasInvoice = documentsWithInvoices.has(doc.id)
+                return (
+                  <div
+                    key={doc.id}
+                    className={`flex items-center justify-between p-3 border rounded-lg ${hasInvoice ? 'bg-green-50/50 border-green-200' : 'bg-primary/5 border-primary/20'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* Checkbox for include in export */}
+                      <label className="flex items-center cursor-pointer" title="Als Anhang zur Abrechnung hinzufügen">
+                        <input
+                          type="checkbox"
+                          checked={doc.include_in_export}
+                          onChange={() => handleToggleIncludeInExport(doc.id, doc.include_in_export)}
+                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          disabled={isFinalized}
+                        />
+                      </label>
+                      <div className="relative">
+                        <FileText className={`h-8 w-8 ${hasInvoice ? 'text-green-600' : doc.include_in_export ? 'text-primary' : 'text-gray-400'}`} />
+                        {hasInvoice && (
+                          <CheckCircle className="absolute -top-1 -right-1 h-4 w-4 text-green-600 bg-white rounded-full" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm flex items-center gap-2">
+                          {doc.original_filename}
+                          {hasInvoice && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              Rechnung erstellt
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(doc.upload_date).toLocaleDateString('de-DE')} •{' '}
+                          <span className={docStatus.color}>{docStatus.label}</span>
+                          {doc.include_in_export && (
+                            <span className="ml-2 text-primary">• Anhang</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-primary border-primary">
+                        Spezifisch
+                      </Badge>
+                      {doc.document_status === 'PENDING' && !isFinalized && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleProcessDocument(doc.id)}
+                          disabled={processDocument.isPending}
+                        >
+                          {processDocument.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                          <span className="ml-2">OCR</span>
+                        </Button>
+                      )}
+                      {doc.document_status === 'PROCESSING' && (
+                        <Button variant="outline" size="sm" disabled>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="ml-2">Verarbeitung...</span>
+                        </Button>
+                      )}
+                      {(doc.document_status === 'PROCESSED' || doc.document_status === 'FAILED') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleShowOcrDetails(doc)}
+                        >
+                          <FileSearch className="h-4 w-4" />
+                          <span className="ml-2">Details</span>
+                        </Button>
+                      )}
+                      {!isFinalized && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-primary border-primary">
-                    Spezifisch
-                  </Badge>
-                </div>
-              ))}
-              {/* Settlement-wide documents */}
-              {settlementDocuments?.filter(d => d.include_in_export).map((doc) => (
-                <div
+                )
+              })}
+              {/* Inherited documents from settlement */}
+              {inheritedDocuments.filter(d =>
+                d.include_in_export && !unitDocuments.some(ud => ud.id === d.id)
+              ).map((doc) => (
+                <DocumentCard
                   key={doc.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <Building2 className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium text-sm">{doc.original_filename}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(doc.upload_date).toLocaleDateString('de-DE')} •{' '}
-                        Von Liegenschaft geerbt
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="secondary">Geerbt</Badge>
-                </div>
+                  document={doc}
+                  hasInvoice={documentsWithInvoices.has(doc.id)}
+                  isInherited
+                  isReadOnly={isFinalized}
+                  onShowOcr={handleShowOcrDetails}
+                />
               ))}
             </div>
           )}
@@ -806,6 +958,20 @@ export default function UnitSettlementDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {/* OCR Details Modal */}
+      <OcrModal
+        isOpen={showOcrModal}
+        onClose={handleCloseOcrModal}
+        document={selectedDocument}
+        settlementId={settlementId}
+        unitId={unitSettlement?.unit_id}
+        defaultAllocation={defaultAllocation}
+        onInvoiceCreated={handleOcrInvoiceCreated}
+      />
+
+      {/* Confirm Dialog */}
+      {ConfirmDialog}
     </div>
   )
 }
