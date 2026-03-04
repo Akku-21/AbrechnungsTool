@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { AlertCircle, CheckCircle, X } from 'lucide-react'
 
-type ToastVariant = 'default' | 'success' | 'error'
+type ToastVariant = 'default' | 'success' | 'error' | 'destructive'
 
 interface Toast {
   id: string
@@ -65,12 +65,12 @@ function ToastContainer({
           className={`
             flex items-start gap-3 p-4 rounded-lg shadow-lg border
             animate-in slide-in-from-right-full duration-300
-            ${toast.variant === 'error' ? 'bg-red-50 border-red-200' : ''}
+            ${toast.variant === 'error' || toast.variant === 'destructive' ? 'bg-red-50 border-red-200' : ''}
             ${toast.variant === 'success' ? 'bg-green-50 border-green-200' : ''}
             ${toast.variant === 'default' ? 'bg-white border-gray-200' : ''}
           `}
         >
-          {toast.variant === 'error' && (
+          {(toast.variant === 'error' || toast.variant === 'destructive') && (
             <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
           )}
           {toast.variant === 'success' && (
@@ -79,7 +79,7 @@ function ToastContainer({
           <div className="flex-1">
             {toast.title && (
               <p className={`font-medium ${
-                toast.variant === 'error' ? 'text-red-800' :
+                toast.variant === 'error' || toast.variant === 'destructive' ? 'text-red-800' :
                 toast.variant === 'success' ? 'text-green-800' :
                 'text-gray-900'
               }`}>
@@ -87,7 +87,7 @@ function ToastContainer({
               </p>
             )}
             <p className={`text-sm ${
-              toast.variant === 'error' ? 'text-red-700' :
+              toast.variant === 'error' || toast.variant === 'destructive' ? 'text-red-700' :
               toast.variant === 'success' ? 'text-green-700' :
               'text-gray-600'
             }`}>
@@ -97,7 +97,7 @@ function ToastContainer({
           <button
             onClick={() => onDismiss(toast.id)}
             className={`flex-shrink-0 p-1 rounded hover:bg-black/5 ${
-              toast.variant === 'error' ? 'text-red-500' :
+              toast.variant === 'error' || toast.variant === 'destructive' ? 'text-red-500' :
               toast.variant === 'success' ? 'text-green-500' :
               'text-gray-400'
             }`}
