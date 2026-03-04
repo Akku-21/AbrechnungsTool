@@ -2,7 +2,6 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
 
 permissions:
@@ -34,15 +33,10 @@ jobs:
         run: |
           OWNER="${{ github.repository_owner }}"
           echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
-            VERSION="${VERSION#v}"
-            echo "chart_version=${VERSION}" >> "$GITHUB_OUTPUT"
-            echo "image_tag=${VERSION}" >> "$GITHUB_OUTPUT"
-          else
-            echo "chart_version=0.0.0-dev.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-            echo "image_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "chart_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push frontend
         uses: docker/build-push-action@v6

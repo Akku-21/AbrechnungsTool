@@ -18,7 +18,7 @@ const propertySchema = z.object({
   house_number: z.string().min(1, 'Hausnummer ist erforderlich'),
   postal_code: z.string().min(5, 'PLZ muss mindestens 5 Zeichen haben'),
   city: z.string().min(1, 'Stadt ist erforderlich'),
-  total_area_sqm: z.coerce.number().positive('Fläche muss größer als 0 sein'),
+  total_area_sqm: z.number().positive('Fläche muss größer als 0 sein'),
 })
 
 type PropertyFormData = z.infer<typeof propertySchema>
@@ -136,7 +136,7 @@ export default function NewPropertyPage() {
                 type="number"
                 step="0.01"
                 placeholder="150.00"
-                {...register('total_area_sqm')}
+                {...register('total_area_sqm', { valueAsNumber: true })}
               />
               {errors.total_area_sqm && (
                 <p className="text-sm text-destructive">{errors.total_area_sqm.message}</p>
