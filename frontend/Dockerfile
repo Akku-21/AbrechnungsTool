@@ -14,7 +14,7 @@ ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN npm run build && mkdir -p /app/public
 
 # Runner
 FROM base AS runner
