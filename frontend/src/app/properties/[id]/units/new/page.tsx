@@ -16,9 +16,9 @@ import Link from 'next/link'
 
 const unitSchema = z.object({
   designation: z.string().min(1, 'Bezeichnung ist erforderlich'),
-  area_sqm: z.coerce.number().positive('Fläche muss größer als 0 sein'),
-  floor: z.coerce.number().optional(),
-  rooms: z.coerce.number().positive().optional(),
+  area_sqm: z.number().positive('Fläche muss größer als 0 sein'),
+  floor: z.number().optional(),
+  rooms: z.number().positive().optional(),
   has_balcony: z.boolean().default(false),
   has_garden: z.boolean().default(false),
 })
@@ -112,7 +112,7 @@ export default function NewUnitPage({
                   type="number"
                   step="0.01"
                   placeholder="75.00"
-                  {...register('area_sqm')}
+                  {...register('area_sqm', { valueAsNumber: true })}
                 />
                 {errors.area_sqm && (
                   <p className="text-sm text-destructive">{errors.area_sqm.message}</p>
@@ -125,7 +125,7 @@ export default function NewUnitPage({
                   type="number"
                   step="0.5"
                   placeholder="3"
-                  {...register('rooms')}
+                  {...register('rooms', { valueAsNumber: true })}
                 />
               </div>
             </div>
@@ -136,7 +136,7 @@ export default function NewUnitPage({
                 id="floor"
                 type="number"
                 placeholder="0 = EG, 1 = 1. OG"
-                {...register('floor')}
+                {...register('floor', { valueAsNumber: true })}
               />
             </div>
 
