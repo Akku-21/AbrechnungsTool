@@ -19,8 +19,8 @@ const unitSchema = z.object({
   area_sqm: z.number().positive('Fläche muss größer als 0 sein'),
   floor: z.number().optional(),
   rooms: z.number().positive().optional(),
-  has_balcony: z.boolean().default(false),
-  has_garden: z.boolean().default(false),
+  has_balcony: z.boolean(),
+  has_garden: z.boolean(),
 })
 
 type UnitFormData = z.infer<typeof unitSchema>
