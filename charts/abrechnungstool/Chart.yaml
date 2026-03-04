@@ -1,0 +1,6 @@
+apiVersion: v2
+name: abrechnungstool
+description: German rental property expense settlement system
+type: application
+version: 0.1.0
+appVersion: "latest"

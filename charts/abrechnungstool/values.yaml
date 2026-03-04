@@ -1,0 +1,49 @@
+nameOverride: ""
+fullnameOverride: ""
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/akku-21/abrechnungstool-frontend
+    tag: ""  # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  resources: {}
+  env:
+    NEXT_PUBLIC_API_URL: ""
+
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/akku-21/abrechnungstool-backend
+    tag: ""  # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  resources: {}
+  env:
+    DATABASE_URL: ""
+    UPLOAD_DIR: /app/uploads
+    CORS_ORIGINS: ""
+  persistence:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: backend
+        - path: /
+          pathType: Prefix
+          service: frontend
+  tls: []
