@@ -45,13 +45,13 @@ spec:
               value: {{ .Values.backend.env.CORS_ORIGINS | quote }}
           livenessProbe:
             httpGet:
-              path: /api/v1/health
+              path: {{ .Values.backend.healthPath | default "/health" }}
               port: http
             initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: {{ .Values.backend.healthPath | default "/health" }}
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
