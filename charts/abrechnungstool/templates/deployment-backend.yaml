@@ -29,9 +29,16 @@ spec:
             - name: http
               containerPort: 8000
               protocol: TCP
+          {{- if .Values.backend.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.backend.envFromSecret }}
+          {{- end }}
           env:
+            {{- if .Values.backend.env.DATABASE_URL }}
             - name: DATABASE_URL
               value: {{ .Values.backend.env.DATABASE_URL | quote }}
+            {{- end }}
             - name: UPLOAD_DIR
               value: {{ .Values.backend.env.UPLOAD_DIR | quote }}
             - name: CORS_ORIGINS

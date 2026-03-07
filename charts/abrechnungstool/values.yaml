@@ -26,6 +26,7 @@ backend:
     type: ClusterIP
     port: 8000
   resources: {}
+  envFromSecret: ""
   env:
     DATABASE_URL: ""
     UPLOAD_DIR: /app/uploads
