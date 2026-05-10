@@ -48,7 +48,7 @@ export const documentsApi = {
   },
 
   downloadUrl: (id: string): string => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
     return `${API_URL}/api/v1/documents/${id}/download`
   },
 }
