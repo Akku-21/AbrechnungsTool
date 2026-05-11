@@ -12,11 +12,26 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
+  version:
     runs-on: ubuntu-latest
     outputs:
       chart_version: ${{ steps.version.outputs.chart_version }}
       image_tag: ${{ steps.version.outputs.image_tag }}
+      owner: ${{ steps.version.outputs.owner }}
+    steps:
+      - name: Generate versions
+        id: version
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "chart_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  build-frontend:
+    needs: version
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -28,27 +43,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate versions
-        id: version
-        run: |
-          OWNER="${{ github.repository_owner }}"
-          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          echo "chart_version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${VERSION}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/abrechnungstool-frontend:${{ steps.version.outputs.image_tag }}
-            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/abrechnungstool-frontend:latest
-          build-args: APP_VERSION=${{ steps.version.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-frontend:${{ needs.version.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-frontend:latest
+          build-args: APP_VERSION=${{ needs.version.outputs.image_tag }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+  build-backend:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push backend
         uses: docker/build-push-action@v6
@@ -56,14 +75,14 @@ jobs:
           context: ./backend
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/abrechnungstool-backend:${{ steps.version.outputs.image_tag }}
-            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner }}/abrechnungstool-backend:latest
-          build-args: APP_VERSION=${{ steps.version.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-backend:${{ needs.version.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-backend:latest
+          build-args: APP_VERSION=${{ needs.version.outputs.image_tag }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
   helm:
-    needs: build
+    needs: [version, build-frontend, build-backend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,11 +94,10 @@ jobs:
 
       - name: Update Chart.yaml
         run: |
-          sed -i "s/^version:.*/version: ${{ needs.build.outputs.chart_version }}/" charts/abrechnungstool/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ needs.build.outputs.image_tag }}\"/" charts/abrechnungstool/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ needs.version.outputs.chart_version }}/" charts/abrechnungstool/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ needs.version.outputs.image_tag }}\"/" charts/abrechnungstool/Chart.yaml
 
       - name: Package and push
         run: |
           helm package charts/abrechnungstool
-          OWNER="${{ github.repository_owner }}"
-          helm push abrechnungstool-${{ needs.build.outputs.chart_version }}.tgz oci://ghcr.io/${OWNER,,}/charts
+          helm push abrechnungstool-${{ needs.version.outputs.chart_version }}.tgz oci://ghcr.io/${{ needs.version.outputs.owner }}/charts
