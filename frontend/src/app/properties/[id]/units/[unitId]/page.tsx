@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { formatArea, formatCurrency, formatDate } from '@/lib/utils'
 import { TenantCreate } from '@/types'
+import UnitAllocationConfig from '@/components/UnitAllocationConfig'
 
 export default function UnitDetailPage({
   params,
@@ -294,6 +295,15 @@ export default function UnitDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {/* Verteilerschlüssel */}
+      {unit && property && (
+        <UnitAllocationConfig
+          unitId={unitId}
+          unitAreaSqm={unit.area_sqm}
+          propertyTotalAreaSqm={property.total_area_sqm}
+        />
+      )}
 
       {/* Active Tenants */}
       <Card>

@@ -459,6 +459,33 @@ export interface UnitSettlementUpdate {
   notes?: string
 }
 
+// Unit Allocation Types (Verteilerschluessel)
+export interface UnitAllocation {
+  id: string
+  unit_id: string
+  cost_category: CostCategory
+  allocation_method: AllocationMethod
+  allocation_percentage: number
+  custom_value?: number
+  percentage_display: string
+  created_at: string
+  updated_at: string
+}
+
+export interface UnitAllocationCreate {
+  unit_id: string
+  cost_category: CostCategory
+  allocation_method: AllocationMethod
+  allocation_percentage: number
+  custom_value?: number
+}
+
+export interface UnitAllocationUpdate {
+  allocation_method?: AllocationMethod
+  allocation_percentage?: number
+  custom_value?: number
+}
+
 export interface UnitSettlementListResponse {
   unit_settlements: UnitSettlement[]
   total_costs: number
