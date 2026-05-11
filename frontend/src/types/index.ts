@@ -317,6 +317,7 @@ export interface InvoiceUpdate {
   due_date?: string
   total_amount?: number
   cost_category?: CostCategory
+  allocation_percentage?: number
   notes?: string
   is_verified?: boolean
 }

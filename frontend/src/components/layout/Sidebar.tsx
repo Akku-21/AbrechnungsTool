@@ -60,6 +60,11 @@ export function Sidebar() {
           <Settings className="mr-3 h-5 w-5 text-gray-400 group-hover:text-white" />
           Einstellungen
         </Link>
+        {process.env.NEXT_PUBLIC_APP_VERSION && (
+          <p className="mt-3 px-3 text-xs text-gray-500">
+            v{process.env.NEXT_PUBLIC_APP_VERSION}
+          </p>
+        )}
       </div>
     </div>
   )

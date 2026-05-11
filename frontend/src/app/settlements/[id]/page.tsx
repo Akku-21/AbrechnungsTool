@@ -20,6 +20,7 @@ import {
 import {
     useInvoices,
     useCreateInvoice,
+    useUpdateInvoice,
     useDeleteInvoice,
 } from "@/hooks/useInvoices";
 import { settlementsApi } from "@/lib/api/settlements";
@@ -66,6 +67,7 @@ import {
     COST_CATEGORY_LABELS,
     CostCategory,
     InvoiceCreate,
+    InvoiceUpdate,
     Document,
 } from "@/types";
 import { UnitSettlementsList } from "@/components/settlements/UnitSettlementsList";
@@ -135,9 +137,11 @@ export default function SettlementDetailPage({
     const copySettlement = useCopySettlement();
     const updateSettlement = useUpdateSettlement();
     const createInvoice = useCreateInvoice();
+    const updateInvoice = useUpdateInvoice();
     const deleteInvoice = useDeleteInvoice();
 
     const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+    const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
     const [isExportingPdf, setIsExportingPdf] = useState(false);
     const [showFinalizeModal, setShowFinalizeModal] = useState(false);
     const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
@@ -305,6 +309,59 @@ export default function SettlementDetailPage({
             total_amount: 0,
             cost_category: "SONSTIGE" as CostCategory,
         });
+    };
+
+    const handleUpdateInvoice = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingInvoiceId) return;
+        const updateData: InvoiceUpdate = {
+            vendor_name: invoiceForm.vendor_name,
+            invoice_number: invoiceForm.invoice_number,
+            invoice_date: invoiceForm.invoice_date,
+            total_amount: invoiceForm.total_amount,
+            cost_category: invoiceForm.cost_category,
+            allocation_percentage: invoiceForm.allocation_percentage,
+        };
+        await updateInvoice.mutateAsync({ id: editingInvoiceId, data: updateData });
+        setShowInvoiceForm(false);
+        setEditingInvoiceId(null);
+        setInvoiceForm({
+            settlement_id: id,
+            vendor_name: "",
+            invoice_number: "",
+            invoice_date: "",
+            total_amount: 0,
+            cost_category: "SONSTIGE" as CostCategory,
+            allocation_percentage: defaultAllocation,
+        });
+    };
+
+    const handleEditInvoice = (invoice: typeof invoices extends (infer T)[] | undefined ? T : never) => {
+        setInvoiceForm({
+            settlement_id: id,
+            vendor_name: invoice.vendor_name,
+            invoice_number: invoice.invoice_number || "",
+            invoice_date: invoice.invoice_date ? invoice.invoice_date.split("T")[0] : "",
+            total_amount: Number(invoice.total_amount),
+            cost_category: invoice.cost_category as CostCategory,
+            allocation_percentage: invoice.allocation_percentage ?? 1.0,
+        });
+        setEditingInvoiceId(invoice.id);
+        setShowInvoiceForm(true);
+    };
+
+    const handleDuplicateInvoice = (invoice: typeof invoices extends (infer T)[] | undefined ? T : never) => {
+        setInvoiceForm({
+            settlement_id: id,
+            vendor_name: invoice.vendor_name,
+            invoice_number: invoice.invoice_number || "",
+            invoice_date: invoice.invoice_date ? invoice.invoice_date.split("T")[0] : "",
+            total_amount: Number(invoice.total_amount),
+            cost_category: invoice.cost_category as CostCategory,
+            allocation_percentage: invoice.allocation_percentage ?? 1.0,
+        });
+        setEditingInvoiceId(null);
+        setShowInvoiceForm(true);
     };
 
     const handleDeleteInvoice = async (invoiceId: string) => {
@@ -674,10 +731,10 @@ export default function SettlementDetailPage({
                 <CardContent>
                     {showInvoiceForm && (
                         <form
-                            onSubmit={handleCreateInvoice}
+                            onSubmit={editingInvoiceId ? handleUpdateInvoice : handleCreateInvoice}
                             className="mb-6 p-4 border rounded-lg bg-gray-50"
                         >
-                            <h4 className="font-medium mb-4">Neue Rechnung</h4>
+                            <h4 className="font-medium mb-4">{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung"}</h4>
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="vendor_name">
@@ -782,11 +839,11 @@ export default function SettlementDetailPage({
                                         type="number"
                                         min="0"
                                         max="100"
-                                        step="0.1"
+                                        step="0.001"
                                         value={(
                                             (invoiceForm.allocation_percentage ||
                                                 1) * 100
-                                        ).toFixed(1)}
+                                        ).toFixed(3)}
                                         onChange={(e) =>
                                             setInvoiceForm({
                                                 ...invoiceForm,
@@ -806,16 +863,28 @@ export default function SettlementDetailPage({
                             <div className="flex gap-2 mt-4">
                                 <Button
                                     type="submit"
-                                    disabled={createInvoice.isPending}
+                                    disabled={editingInvoiceId ? updateInvoice.isPending : createInvoice.isPending}
                                 >
-                                    {createInvoice.isPending
+                                    {(editingInvoiceId ? updateInvoice.isPending : createInvoice.isPending)
                                         ? "Speichern..."
                                         : "Speichern"}
                                 </Button>
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => setShowInvoiceForm(false)}
+                                    onClick={() => {
+                                        setShowInvoiceForm(false);
+                                        setEditingInvoiceId(null);
+                                        setInvoiceForm({
+                                            settlement_id: id,
+                                            vendor_name: "",
+                                            invoice_number: "",
+                                            invoice_date: "",
+                                            total_amount: 0,
+                                            cost_category: "SONSTIGE" as CostCategory,
+                                            allocation_percentage: defaultAllocation,
+                                        });
+                                    }}
                                 >
                                     Abbrechen
                                 </Button>
@@ -919,22 +988,44 @@ export default function SettlementDetailPage({
                                                 >
                                                     {invoice.allocation_percentage !==
                                                     undefined
-                                                        ? `${(Number(invoice.allocation_percentage) * 100).toFixed(0)}%`
+                                                        ? `${(Number(invoice.allocation_percentage) * 100).toFixed(3)}%`
                                                         : "100%"}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-right">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        handleDeleteInvoice(
-                                                            invoice.id,
-                                                        )
-                                                    }
-                                                >
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                </Button>
+                                                <div className="flex justify-end gap-1">
+                                                    {settlement.status !== "FINALIZED" && (
+                                                        <>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleEditInvoice(invoice)}
+                                                                title="Bearbeiten"
+                                                            >
+                                                                <Edit className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleDuplicateInvoice(invoice)}
+                                                                title="Duplizieren"
+                                                            >
+                                                                <Copy className="h-4 w-4" />
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            handleDeleteInvoice(
+                                                                invoice.id,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
