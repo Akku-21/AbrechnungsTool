@@ -1,16 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useTenants } from '@/hooks/useTenants'
+import { useTenants, useUpdateTenant } from '@/hooks/useTenants'
 import { useProperties } from '@/hooks/useProperties'
 import { useUnits } from '@/hooks/useUnits'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { User, Search, Home, Calendar, Mail, Phone } from 'lucide-react'
+import { User, Search, Home, Calendar, Mail, Phone, Pencil, X, Check } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { fuzzyFilter } from '@/lib/fuzzySearch'
 import { useState, useMemo } from 'react'
+import type { Tenant, TenantUpdate } from '@/types'
 
 export default function TenantsPage() {
   const { data: tenants, isLoading: tenantsLoading } = useTenants()
@@ -18,6 +19,48 @@ export default function TenantsPage() {
   const { data: units } = useUnits()
   const [searchTerm, setSearchTerm] = useState('')
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('all')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<TenantUpdate>({})
+  const updateTenant = useUpdateTenant()
+
+  const startEditing = (tenant: Tenant) => {
+    setEditingId(tenant.id)
+    setEditForm({
+      salutation: tenant.salutation || '',
+      first_name: tenant.first_name,
+      last_name: tenant.last_name,
+      email: tenant.email || '',
+      phone: tenant.phone || '',
+      move_in_date: tenant.move_in_date,
+      move_out_date: tenant.move_out_date || '',
+      resident_count: tenant.resident_count,
+      monthly_prepayment: tenant.monthly_prepayment ?? undefined,
+    })
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditForm({})
+  }
+
+  const saveEditing = (id: string) => {
+    const data: TenantUpdate = { ...editForm }
+    // Clean up empty strings to undefined so backend ignores them
+    if (data.email === '') data.email = undefined
+    if (data.phone === '') data.phone = undefined
+    if (data.salutation === '') data.salutation = undefined
+    if (data.move_out_date === '') data.move_out_date = undefined
+
+    updateTenant.mutate(
+      { id, data },
+      {
+        onSuccess: () => {
+          setEditingId(null)
+          setEditForm({})
+        },
+      }
+    )
+  }
 
   const properties = propertiesData?.items || []
 
@@ -185,6 +228,123 @@ export default function TenantsPage() {
             <div className="space-y-4">
               {filteredTenants.map((tenant) => {
                 const isActive = tenant.is_active && !tenant.move_out_date
+                const isEditing = editingId === tenant.id
+
+                if (isEditing) {
+                  return (
+                    <div
+                      key={tenant.id}
+                      className="p-4 border-2 border-blue-300 rounded-lg bg-blue-50/30 space-y-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium">Mieter bearbeiten</h4>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={cancelEditing}
+                            disabled={updateTenant.isPending}
+                          >
+                            <X className="mr-1 h-4 w-4" />
+                            Abbrechen
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => saveEditing(tenant.id)}
+                            disabled={updateTenant.isPending || !editForm.first_name || !editForm.last_name}
+                          >
+                            <Check className="mr-1 h-4 w-4" />
+                            {updateTenant.isPending ? 'Speichern...' : 'Speichern'}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Anrede</label>
+                          <Input
+                            value={editForm.salutation || ''}
+                            onChange={(e) => setEditForm({ ...editForm, salutation: e.target.value })}
+                            placeholder="Herr / Frau"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Vorname</label>
+                          <Input
+                            value={editForm.first_name || ''}
+                            onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nachname</label>
+                          <Input
+                            value={editForm.last_name || ''}
+                            onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+                          <Input
+                            type="email"
+                            value={editForm.email || ''}
+                            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                          <Input
+                            type="tel"
+                            value={editForm.phone || ''}
+                            onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Personenzahl</label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={editForm.resident_count ?? ''}
+                            onChange={(e) => setEditForm({ ...editForm, resident_count: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Einzug</label>
+                          <Input
+                            type="date"
+                            value={editForm.move_in_date || ''}
+                            onChange={(e) => setEditForm({ ...editForm, move_in_date: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Auszug</label>
+                          <Input
+                            type="date"
+                            value={editForm.move_out_date || ''}
+                            onChange={(e) => setEditForm({ ...editForm, move_out_date: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Vorauszahlung/Monat</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={editForm.monthly_prepayment ?? ''}
+                            onChange={(e) => setEditForm({ ...editForm, monthly_prepayment: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                      </div>
+
+                      {updateTenant.isError && (
+                        <p className="text-sm text-red-600">
+                          Fehler beim Speichern. Bitte versuchen Sie es erneut.
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
 
                 return (
                   <div
@@ -244,6 +404,14 @@ export default function TenantsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startEditing(tenant)}
+                      >
+                        <Pencil className="mr-1 h-4 w-4" />
+                        Bearbeiten
+                      </Button>
                       {tenant.property && tenant.unit && (
                         <Link
                           href={`/properties/${tenant.property.id}/units/${tenant.unit.id}`}
