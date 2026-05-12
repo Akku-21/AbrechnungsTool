@@ -1,6 +1,8 @@
 """
 Service für die Berechnung von Nebenkostenabrechnungen
 """
+
+from calendar import isleap
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
@@ -22,7 +24,9 @@ from app.models.enums import CostCategory, AllocationMethod, SettlementStatus
 class CalculationService:
     """Service für Nebenkostenberechnungen"""
 
-    def calculate_settlement(self, settlement_id: UUID, db: Session) -> list[SettlementResult]:
+    def calculate_settlement(
+        self, settlement_id: UUID, db: Session
+    ) -> list[SettlementResult]:
         """
         Berechne die Nebenkostenabrechnung für alle Wohneinheiten
         """
@@ -39,20 +43,27 @@ class CalculationService:
             raise ValueError("Keine Wohneinheiten in dieser Liegenschaft")
 
         # Alle Rechnungen der Abrechnung summiert nach Kategorie
-        original_costs, allocated_costs, invoice_allocations = self._get_costs_by_category(settlement, db)
+        original_costs, allocated_costs, invoice_allocations = (
+            self._get_costs_by_category(settlement, db)
+        )
 
         # Manuelle Buchungen
-        manual_entries = db.query(ManualEntry).filter(
-            ManualEntry.settlement_id == settlement_id
-        ).all()
+        manual_entries = (
+            db.query(ManualEntry)
+            .filter(ManualEntry.settlement_id == settlement_id)
+            .all()
+        )
 
         # Vor dem Löschen: Dokument-Unit-Zuordnung speichern
         # (Dokumente mit settlement_result_id werden nach Neuberechnung wieder verknüpft)
         from app.models.document import Document
+
         doc_unit_mapping: dict[UUID, UUID] = {}  # document_id -> unit_id
-        old_results = db.query(SettlementResult).filter(
-            SettlementResult.settlement_id == settlement_id
-        ).all()
+        old_results = (
+            db.query(SettlementResult)
+            .filter(SettlementResult.settlement_id == settlement_id)
+            .all()
+        )
         for old_result in old_results:
             for doc in old_result.documents:
                 doc_unit_mapping[doc.id] = old_result.unit_id
@@ -69,9 +80,7 @@ class CalculationService:
         for unit in units:
             # Aktiven Mieter im Abrechnungszeitraum finden
             tenant = self._get_tenant_for_period(
-                unit,
-                settlement.period_start,
-                settlement.period_end
+                unit, settlement.period_start, settlement.period_end
             )
 
             if not tenant:
@@ -79,15 +88,22 @@ class CalculationService:
 
             # Belegungstage berechnen
             occupancy_days = self._calculate_occupancy_days(
-                tenant,
-                settlement.period_start,
-                settlement.period_end
+                tenant, settlement.period_start, settlement.period_end
             )
 
             total_days = (settlement.period_end - settlement.period_start).days + 1
 
+            # Rechnungen beziehen sich auf ein volles Jahr.
+            # Bei kürzerem Abrechnungszeitraum Kosten anteilig berechnen.
+            year_days = 366 if isleap(settlement.period_start.year) else 365
+            period_fraction = (
+                Decimal(total_days) / Decimal(year_days)
+                if total_days < year_days
+                else Decimal("1")
+            )
+
             # Kosten pro Kategorie berechnen
-            total_costs = Decimal('0')
+            total_costs = Decimal("0")
             breakdowns = []
 
             for category, category_allocated in allocated_costs.items():
@@ -95,36 +111,43 @@ class CalculationService:
                 unit_allocation = self._get_allocation(unit, category, property_obj, db)
 
                 # Invoice-Allocation für diese Kategorie
-                inv_allocation = invoice_allocations.get(category, Decimal('1'))
+                inv_allocation = invoice_allocations.get(category, Decimal("1"))
 
                 # Original-Rechnungsbetrag (vor Invoice-Allocation)
-                original_total = original_costs.get(category, Decimal('0'))
+                original_total = original_costs.get(category, Decimal("0"))
 
-                # Anteil berechnen (Invoice-Allocation × Unit-Allocation)
-                allocated_amount = category_allocated * unit_allocation.percentage
+                # Anteil berechnen (Invoice-Allocation × Unit-Allocation × Zeitraumanteil)
+                allocated_amount = (
+                    category_allocated * period_fraction * unit_allocation.percentage
+                )
 
                 # Zeitanteil (bei Mieterwechsel)
                 if occupancy_days < total_days:
-                    allocated_amount = allocated_amount * Decimal(occupancy_days) / Decimal(total_days)
+                    allocated_amount = (
+                        allocated_amount * Decimal(occupancy_days) / Decimal(total_days)
+                    )
 
-                allocated_amount = allocated_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                allocated_amount = allocated_amount.quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
                 total_costs += allocated_amount
 
                 # Kombinierter Anteil: Invoice-Allocation × Unit-Allocation
                 combined_percentage = inv_allocation * unit_allocation.percentage
 
-                breakdowns.append(SettlementCostBreakdown(
-                    cost_category=category,
-                    total_property_cost=original_total,  # Original-Rechnungsbetrag
-                    allocation_percentage=combined_percentage,  # Kombinierter Anteil
-                    allocated_amount=allocated_amount,
-                    allocation_method=unit_allocation.method
-                ))
+                breakdowns.append(
+                    SettlementCostBreakdown(
+                        cost_category=category,
+                        total_property_cost=original_total,  # Original-Rechnungsbetrag
+                        allocation_percentage=combined_percentage,  # Kombinierter Anteil
+                        allocated_amount=allocated_amount,
+                        allocation_method=unit_allocation.method,
+                    )
+                )
 
             # Manuelle Einträge für diese Einheit
             unit_manual_entries = [
-                e for e in manual_entries
-                if e.unit_id is None or e.unit_id == unit.id
+                e for e in manual_entries if e.unit_id is None or e.unit_id == unit.id
             ]
 
             for entry in unit_manual_entries:
@@ -136,13 +159,11 @@ class CalculationService:
                     # Nur für diese Einheit
                     amount = entry.amount
 
-                total_costs += amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                total_costs += amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             # Vorauszahlungen berechnen
             total_prepayments = self._calculate_prepayments(
-                tenant,
-                settlement.period_start,
-                settlement.period_end
+                tenant, settlement.period_start, settlement.period_end
             )
 
             # Saldo: Positiv = Nachzahlung, Negativ = Guthaben
@@ -161,9 +182,11 @@ class CalculationService:
                     "period_start": settlement.period_start.isoformat(),
                     "period_end": settlement.period_end.isoformat(),
                     "total_days": total_days,
+                    "year_days": year_days,
+                    "period_fraction": float(period_fraction),
                     "unit_area": float(unit.area_sqm),
-                    "property_area": float(property_obj.total_area_sqm)
-                }
+                    "property_area": float(property_obj.total_area_sqm),
+                },
             )
 
             db.add(result)
@@ -193,10 +216,12 @@ class CalculationService:
         return results
 
     def _get_costs_by_category(
-        self,
-        settlement: Settlement,
-        db: Session
-    ) -> tuple[dict[CostCategory, Decimal], dict[CostCategory, Decimal], dict[CostCategory, Decimal]]:
+        self, settlement: Settlement, db: Session
+    ) -> tuple[
+        dict[CostCategory, Decimal],
+        dict[CostCategory, Decimal],
+        dict[CostCategory, Decimal],
+    ]:
         """
         Summiere alle Rechnungsbeträge nach Kategorie.
 
@@ -206,17 +231,17 @@ class CalculationService:
             - allocated_costs: Allocated amounts (after invoice allocation)
             - invoice_allocations: Weighted average invoice allocation per category
         """
-        invoices = db.query(Invoice).filter(
-            Invoice.settlement_id == settlement.id
-        ).all()
+        invoices = (
+            db.query(Invoice).filter(Invoice.settlement_id == settlement.id).all()
+        )
 
         original_costs: dict[CostCategory, Decimal] = {}
         allocated_costs: dict[CostCategory, Decimal] = {}
 
         for invoice in invoices:
             if invoice.cost_category not in original_costs:
-                original_costs[invoice.cost_category] = Decimal('0')
-                allocated_costs[invoice.cost_category] = Decimal('0')
+                original_costs[invoice.cost_category] = Decimal("0")
+                allocated_costs[invoice.cost_category] = Decimal("0")
 
             original_costs[invoice.cost_category] += invoice.total_amount
 
@@ -232,17 +257,16 @@ class CalculationService:
         invoice_allocations: dict[CostCategory, Decimal] = {}
         for category in original_costs:
             if original_costs[category] > 0:
-                invoice_allocations[category] = allocated_costs[category] / original_costs[category]
+                invoice_allocations[category] = (
+                    allocated_costs[category] / original_costs[category]
+                )
             else:
-                invoice_allocations[category] = Decimal('1')
+                invoice_allocations[category] = Decimal("1")
 
         return original_costs, allocated_costs, invoice_allocations
 
     def _get_tenant_for_period(
-        self,
-        unit: Unit,
-        period_start: date,
-        period_end: date
+        self, unit: Unit, period_start: date, period_end: date
     ) -> Optional[Tenant]:
         """Finde den Mieter für den Abrechnungszeitraum"""
         for tenant in unit.tenants:
@@ -259,10 +283,7 @@ class CalculationService:
         return None
 
     def _calculate_occupancy_days(
-        self,
-        tenant: Tenant,
-        period_start: date,
-        period_end: date
+        self, tenant: Tenant, period_start: date, period_end: date
     ) -> int:
         """Berechne die Belegungstage im Abrechnungszeitraum"""
         # Effektiver Start: Später von Einzug und Periodenstart
@@ -280,52 +301,47 @@ class CalculationService:
         return (effective_end - effective_start).days + 1
 
     def _get_allocation(
-        self,
-        unit: Unit,
-        category: CostCategory,
-        property_obj: Property,
-        db: Session
-    ) -> 'AllocationInfo':
+        self, unit: Unit, category: CostCategory, property_obj: Property, db: Session
+    ) -> "AllocationInfo":
         """Hole oder berechne den Verteilerschlüssel"""
         # Prüfe ob spezifischer Verteilerschlüssel existiert
-        allocation = db.query(UnitAllocation).filter(
-            UnitAllocation.unit_id == unit.id,
-            UnitAllocation.cost_category == category
-        ).first()
+        allocation = (
+            db.query(UnitAllocation)
+            .filter(
+                UnitAllocation.unit_id == unit.id,
+                UnitAllocation.cost_category == category,
+            )
+            .first()
+        )
 
         if allocation:
             return AllocationInfo(
                 percentage=allocation.allocation_percentage,
-                method=allocation.allocation_method
+                method=allocation.allocation_method,
             )
 
         # Standard: Nach Wohnfläche
         percentage = unit.area_sqm / property_obj.total_area_sqm
 
         return AllocationInfo(
-            percentage=percentage,
-            method=AllocationMethod.WOHNFLAECHE
+            percentage=percentage, method=AllocationMethod.WOHNFLAECHE
         )
 
     def _calculate_prepayments(
-        self,
-        tenant: Tenant,
-        period_start: date,
-        period_end: date
+        self, tenant: Tenant, period_start: date, period_end: date
     ) -> Decimal:
         """Berechne die geleisteten Vorauszahlungen"""
         if not tenant.monthly_prepayment:
-            return Decimal('0')
+            return Decimal("0")
 
         # Belegungstage
         days = self._calculate_occupancy_days(tenant, period_start, period_end)
 
         # Monate (approximiert)
-        months = Decimal(days) / Decimal('30.44')  # Durchschnittliche Tage pro Monat
+        months = Decimal(days) / Decimal("30.44")  # Durchschnittliche Tage pro Monat
 
         return (tenant.monthly_prepayment * months).quantize(
-            Decimal('0.01'),
-            rounding=ROUND_HALF_UP
+            Decimal("0.01"), rounding=ROUND_HALF_UP
         )
 
 
