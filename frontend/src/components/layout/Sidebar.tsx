@@ -24,7 +24,7 @@ export function Sidebar() {
   const [backendVersion, setBackendVersion] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/health')
+    fetch('/api/v1/health')
       .then((res) => res.json())
       .then((data) => setBackendVersion(data.version))
       .catch(() => {})
