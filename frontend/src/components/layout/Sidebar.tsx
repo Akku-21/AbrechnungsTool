@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import {
   Building2,
@@ -20,6 +21,14 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const [backendVersion, setBackendVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/health')
+      .then((res) => res.json())
+      .then((data) => setBackendVersion(data.version))
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="flex h-full w-64 flex-col bg-gray-900">
@@ -60,10 +69,15 @@ export function Sidebar() {
           <Settings className="mr-3 h-5 w-5 text-gray-400 group-hover:text-white" />
           Einstellungen
         </Link>
-        {process.env.NEXT_PUBLIC_APP_VERSION && (
-          <p className="mt-3 px-3 text-xs text-gray-500">
-            v{process.env.NEXT_PUBLIC_APP_VERSION}
-          </p>
+        {(process.env.NEXT_PUBLIC_APP_VERSION || backendVersion) && (
+          <div className="mt-3 px-3 text-xs text-gray-500 space-y-0.5">
+            {process.env.NEXT_PUBLIC_APP_VERSION && (
+              <p>Frontend v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
+            )}
+            {backendVersion && (
+              <p>Backend v{backendVersion}</p>
+            )}
+          </div>
         )}
       </div>
     </div>

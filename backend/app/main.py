@@ -25,4 +25,6 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    import os
+
+    return {"status": "healthy", "version": os.environ.get("APP_VERSION", "dev")}
