@@ -29,11 +29,39 @@ jobs:
           echo "chart_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${VERSION}" >> "$GITHUB_OUTPUT"
 
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.detect.outputs.frontend }}
+      backend: ${{ steps.detect.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes since last tag
+        id: detect
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, building everything"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Comparing $PREV_TAG to HEAD"
+          FE=$(git diff --name-only "$PREV_TAG" HEAD -- frontend/ | wc -l)
+          BE=$(git diff --name-only "$PREV_TAG" HEAD -- backend/ | wc -l)
+          echo "frontend=$( [ "$FE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "backend=$( [ "$BE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "Frontend changed: $FE files, Backend changed: $BE files"
+
   build-frontend:
-    needs: version
+    needs: [version, changes]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.frontend == 'true'
 
       - uses: docker/setup-buildx-action@v3
 
@@ -44,6 +72,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push frontend
+        if: needs.changes.outputs.frontend == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
@@ -55,11 +84,19 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
+      - name: Re-tag existing image
+        if: needs.changes.outputs.frontend != 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-frontend:${{ needs.version.outputs.image_tag }} \
+            ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-frontend:latest
+
   build-backend:
-    needs: version
+    needs: [version, changes]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.backend == 'true'
 
       - uses: docker/setup-buildx-action@v3
 
@@ -70,6 +107,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push backend
+        if: needs.changes.outputs.backend == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./backend
@@ -80,6 +118,13 @@ jobs:
           build-args: APP_VERSION=${{ needs.version.outputs.image_tag }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
+
+      - name: Re-tag existing image
+        if: needs.changes.outputs.backend != 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-backend:${{ needs.version.outputs.image_tag }} \
+            ${{ env.REGISTRY }}/${{ needs.version.outputs.owner }}/abrechnungstool-backend:latest
 
   helm:
     needs: [version, build-frontend, build-backend]
