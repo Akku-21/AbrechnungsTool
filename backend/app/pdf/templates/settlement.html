@@ -405,7 +405,7 @@
             </div>
             <div class="summary-box new-prepayment">
                 <div class="label">Neuer monatlicher Abschlag</div>
-                <div class="value">{{ (result.total_costs / 12)|round_up_even }},00 EUR</div>
+                <div class="value">{{ (result.total_costs / period_months)|round_up_even }},00 EUR</div>
                 <div class="hint">Ab dem nächsten Abrechnungszeitraum</div>
             </div>
         </div>

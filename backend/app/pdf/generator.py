@@ -1,6 +1,7 @@
 """
 PDF-Generator für Nebenkostenabrechnungen
 """
+
 import io
 from datetime import date
 from decimal import Decimal
@@ -43,35 +44,37 @@ class PDFGenerator:
         self.env = Environment(loader=FileSystemLoader(template_dir))
 
         # Deutsche Formatierung registrieren
-        self.env.filters['euro'] = self._format_euro
-        self.env.filters['german_date'] = self._format_german_date
-        self.env.filters['percentage'] = self._format_percentage
-        self.env.filters['area'] = self._format_area
-        self.env.filters['round_up_even'] = self._round_up_even
+        self.env.filters["euro"] = self._format_euro
+        self.env.filters["german_date"] = self._format_german_date
+        self.env.filters["percentage"] = self._format_percentage
+        self.env.filters["area"] = self._format_area
+        self.env.filters["round_up_even"] = self._round_up_even
 
         # Legacy Signing Service (wird durch DB-basierte Konfiguration ersetzt)
         self.legacy_signing_service = create_signing_service(
-            settings.SIGNING_CERT_PATH,
-            settings.SIGNING_CERT_PASSWORD
+            settings.SIGNING_CERT_PATH, settings.SIGNING_CERT_PASSWORD
         )
 
-    def generate_settlement_pdf(
-        self,
-        settlement_id: UUID,
-        db: Session
-    ) -> bytes:
+    def generate_settlement_pdf(self, settlement_id: UUID, db: Session) -> bytes:
         """Generiere PDF für eine Abrechnung"""
         settlement = db.query(Settlement).filter(Settlement.id == settlement_id).first()
 
         if not settlement:
             raise ValueError(f"Abrechnung nicht gefunden: {settlement_id}")
 
-        results = db.query(SettlementResult).filter(
-            SettlementResult.settlement_id == settlement_id
-        ).all()
+        results = (
+            db.query(SettlementResult)
+            .filter(SettlementResult.settlement_id == settlement_id)
+            .all()
+        )
 
         if not results:
-            raise ValueError("Keine Berechnungsergebnisse vorhanden. Bitte zuerst berechnen.")
+            raise ValueError(
+                "Keine Berechnungsergebnisse vorhanden. Bitte zuerst berechnen."
+            )
+
+        total_days = (settlement.period_end - settlement.period_start).days + 1
+        period_months = total_days / Decimal("30.44")
 
         # Template laden
         template = self.env.get_template("settlement.html")
@@ -81,52 +84,68 @@ class PDFGenerator:
         results_data = []
 
         for result in results:
-            breakdowns = db.query(SettlementCostBreakdown).filter(
-                SettlementCostBreakdown.settlement_result_id == result.id
-            ).all()
+            breakdowns = (
+                db.query(SettlementCostBreakdown)
+                .filter(SettlementCostBreakdown.settlement_result_id == result.id)
+                .all()
+            )
 
-            results_data.append({
-                'unit': result.unit,
-                'tenant': result.tenant,
-                'total_costs': result.total_costs,
-                'total_prepayments': result.total_prepayments,
-                'balance': result.balance,
-                'occupancy_days': result.occupancy_days,
-                'breakdowns': breakdowns
-            })
+            results_data.append(
+                {
+                    "unit": result.unit,
+                    "tenant": result.tenant,
+                    "total_costs": result.total_costs,
+                    "total_prepayments": result.total_prepayments,
+                    "balance": result.balance,
+                    "occupancy_days": result.occupancy_days,
+                    "breakdowns": breakdowns,
+                }
+            )
 
         # Rechnungen für Übersicht laden
-        invoices = db.query(Invoice).filter(
-            Invoice.settlement_id == settlement_id
-        ).order_by(Invoice.cost_category, Invoice.invoice_date).all()
+        invoices = (
+            db.query(Invoice)
+            .filter(Invoice.settlement_id == settlement_id)
+            .order_by(Invoice.cost_category, Invoice.invoice_date)
+            .all()
+        )
 
         # Rechnungsdaten aufbereiten
         invoices_data = []
         for inv in invoices:
-            allocation = float(inv.allocation_percentage) if inv.allocation_percentage else 1.0
-            invoices_data.append({
-                'vendor_name': inv.vendor_name,
-                'invoice_number': inv.invoice_number,
-                'invoice_date': inv.invoice_date,
-                'cost_category': inv.cost_category,
-                'total_amount': inv.total_amount,
-                'allocation_percentage': allocation,
-                'allocated_amount': inv.total_amount * Decimal(str(allocation)),
-                'document_id': str(inv.document_id) if inv.document_id else None
-            })
+            allocation = (
+                float(inv.allocation_percentage) if inv.allocation_percentage else 1.0
+            )
+            invoices_data.append(
+                {
+                    "vendor_name": inv.vendor_name,
+                    "invoice_number": inv.invoice_number,
+                    "invoice_date": inv.invoice_date,
+                    "cost_category": inv.cost_category,
+                    "total_amount": inv.total_amount,
+                    "allocation_percentage": allocation,
+                    "allocated_amount": inv.total_amount * Decimal(str(allocation)),
+                    "document_id": str(inv.document_id) if inv.document_id else None,
+                }
+            )
 
         # Anhänge laden (für Platzhalter im HTML)
-        attachments = db.query(Document).filter(
-            Document.settlement_id == settlement_id,
-            Document.include_in_export == True
-        ).order_by(Document.upload_date).all()
+        attachments = (
+            db.query(Document)
+            .filter(
+                Document.settlement_id == settlement_id,
+                Document.include_in_export == True,
+            )
+            .order_by(Document.upload_date)
+            .all()
+        )
 
         # Vermieter-Daten aus Einstellungen laden
         landlord = {
-            'name': get_setting(db, 'company_name'),
-            'street': get_setting(db, 'company_street'),
-            'postal_code': get_setting(db, 'company_postal_code'),
-            'city': get_setting(db, 'company_city'),
+            "name": get_setting(db, "company_name"),
+            "street": get_setting(db, "company_street"),
+            "postal_code": get_setting(db, "company_postal_code"),
+            "city": get_setting(db, "company_city"),
         }
 
         # Signatur-Daten für Template
@@ -150,10 +169,11 @@ class PDFGenerator:
             invoices=invoices_data,
             cost_category_labels=COST_CATEGORY_LABELS,
             generated_date=date.today(),
-            attachments=attachments,  # Für Link-Platzhalter
+            attachments=attachments,
             landlord=landlord,
             signature_area=signature_area,
             signature_image=signature_image,
+            period_months=float(period_months),
         )
 
         # CSS laden
@@ -185,23 +205,19 @@ class PDFGenerator:
             if signing_service:
                 period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
                 pdf_bytes = signing_service.apply_signature(
-                    pdf_bytes,
-                    reason=f"Nebenkostenabrechnung {period_label}"
+                    pdf_bytes, reason=f"Nebenkostenabrechnung {period_label}"
                 )
         elif sig_type == "NONE" and self.legacy_signing_service:
             # Legacy-Fallback für Umgebungsvariablen-Konfiguration
             period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
             pdf_bytes = self.legacy_signing_service.apply_signature(
-                pdf_bytes,
-                reason=f"Nebenkostenabrechnung {period_label}"
+                pdf_bytes, reason=f"Nebenkostenabrechnung {period_label}"
             )
 
         return pdf_bytes
 
     def _merge_pdfs_with_attachments(
-        self,
-        main_pdf_bytes: bytes,
-        attachments: List[Document]
+        self, main_pdf_bytes: bytes, attachments: List[Document]
     ) -> bytes:
         """Füge Anhänge zum Haupt-PDF hinzu mit internen Links"""
         writer = PdfWriter()
@@ -261,11 +277,11 @@ class PDFGenerator:
         mime_type = doc.mime_type.lower()
 
         # Bereits ein PDF
-        if mime_type == 'application/pdf':
+        if mime_type == "application/pdf":
             return file_path.read_bytes()
 
         # Bild zu PDF konvertieren
-        if mime_type.startswith('image/'):
+        if mime_type.startswith("image/"):
             try:
                 # A4 Größe: 210mm x 297mm, mit Rand
                 a4_width = img2pdf.mm_to_pt(210)
@@ -274,7 +290,7 @@ class PDFGenerator:
                     pagesize=(a4_width, a4_height),
                     fit=img2pdf.FitMode.into,  # Bild in Seite einpassen
                 )
-                with open(file_path, 'rb') as img_file:
+                with open(file_path, "rb") as img_file:
                     return img2pdf.convert(img_file, layout_fun=layout)
             except Exception as e:
                 print(f"Fehler bei Bildkonvertierung: {e}")
@@ -288,7 +304,9 @@ class PDFGenerator:
         if value is None:
             return "0,00 EUR"
         # Deutsches Format: 1.234,56 EUR
-        formatted = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        formatted = (
+            f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
         return f"{formatted} EUR"
 
     @staticmethod
@@ -311,13 +329,16 @@ class PDFGenerator:
         """Formatiere als Flächenangabe"""
         if value is None:
             return "0,00 m²"
-        formatted = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        formatted = (
+            f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
         return f"{formatted} m²"
 
     @staticmethod
     def _round_up_even(value) -> int:
         """Runde auf zur nächsten geraden Zahl"""
         import math
+
         if value is None:
             return 0
         # Aufrunden zur nächsten ganzen Zahl
@@ -328,89 +349,113 @@ class PDFGenerator:
         return rounded
 
     def generate_unit_settlement_pdf(
-        self,
-        unit_settlement_id: UUID,
-        db: Session
+        self, unit_settlement_id: UUID, db: Session
     ) -> bytes:
         """Generiere PDF für eine einzelne Wohneinheit/Mieter"""
         # SettlementResult laden
-        result = db.query(SettlementResult).filter(
-            SettlementResult.id == unit_settlement_id
-        ).first()
+        result = (
+            db.query(SettlementResult)
+            .filter(SettlementResult.id == unit_settlement_id)
+            .first()
+        )
 
         if not result:
             raise ValueError(f"Einzelabrechnung nicht gefunden: {unit_settlement_id}")
 
-        settlement = db.query(Settlement).filter(
-            Settlement.id == result.settlement_id
-        ).first()
+        settlement = (
+            db.query(Settlement).filter(Settlement.id == result.settlement_id).first()
+        )
 
         if not settlement:
             raise ValueError("Abrechnung nicht gefunden")
 
+        total_days = (settlement.period_end - settlement.period_start).days + 1
+        period_months = total_days / Decimal("30.44")
+
         # Breakdowns laden
-        breakdowns = db.query(SettlementCostBreakdown).filter(
-            SettlementCostBreakdown.settlement_result_id == result.id
-        ).all()
+        breakdowns = (
+            db.query(SettlementCostBreakdown)
+            .filter(SettlementCostBreakdown.settlement_result_id == result.id)
+            .all()
+        )
 
         # Template laden
         template = self.env.get_template("settlement.html")
 
         # Daten für Template aufbereiten (nur diese eine Unit)
         property_obj = settlement.property_ref
-        results_data = [{
-            'unit': result.unit,
-            'tenant': result.tenant,
-            'total_costs': result.total_costs,
-            'total_prepayments': result.total_prepayments,
-            'balance': result.balance,
-            'occupancy_days': result.occupancy_days,
-            'breakdowns': breakdowns
-        }]
+        results_data = [
+            {
+                "unit": result.unit,
+                "tenant": result.tenant,
+                "total_costs": result.total_costs,
+                "total_prepayments": result.total_prepayments,
+                "balance": result.balance,
+                "occupancy_days": result.occupancy_days,
+                "breakdowns": breakdowns,
+            }
+        ]
 
         # Rechnungen für Übersicht laden (nur anteilig für diese Unit)
-        invoices = db.query(Invoice).filter(
-            Invoice.settlement_id == result.settlement_id
-        ).order_by(Invoice.cost_category, Invoice.invoice_date).all()
+        invoices = (
+            db.query(Invoice)
+            .filter(Invoice.settlement_id == result.settlement_id)
+            .order_by(Invoice.cost_category, Invoice.invoice_date)
+            .all()
+        )
 
         # Rechnungsdaten aufbereiten
         invoices_data = []
         for inv in invoices:
-            allocation = float(inv.allocation_percentage) if inv.allocation_percentage else 1.0
-            invoices_data.append({
-                'vendor_name': inv.vendor_name,
-                'invoice_number': inv.invoice_number,
-                'invoice_date': inv.invoice_date,
-                'cost_category': inv.cost_category,
-                'total_amount': inv.total_amount,
-                'allocation_percentage': allocation,
-                'allocated_amount': inv.total_amount * Decimal(str(allocation)),
-                'document_id': str(inv.document_id) if inv.document_id else None
-            })
+            allocation = (
+                float(inv.allocation_percentage) if inv.allocation_percentage else 1.0
+            )
+            invoices_data.append(
+                {
+                    "vendor_name": inv.vendor_name,
+                    "invoice_number": inv.invoice_number,
+                    "invoice_date": inv.invoice_date,
+                    "cost_category": inv.cost_category,
+                    "total_amount": inv.total_amount,
+                    "allocation_percentage": allocation,
+                    "allocated_amount": inv.total_amount * Decimal(str(allocation)),
+                    "document_id": str(inv.document_id) if inv.document_id else None,
+                }
+            )
 
         # Anhänge laden:
         # 1. Unit-spezifische Dokumente (settlement_result_id = diese Unit)
         # 2. Optional: Settlement-weite Dokumente die include_in_export haben
-        unit_attachments = db.query(Document).filter(
-            Document.settlement_result_id == unit_settlement_id,
-            Document.include_in_export == True
-        ).order_by(Document.upload_date).all()
+        unit_attachments = (
+            db.query(Document)
+            .filter(
+                Document.settlement_result_id == unit_settlement_id,
+                Document.include_in_export == True,
+            )
+            .order_by(Document.upload_date)
+            .all()
+        )
 
         # Settlement-weite Dokumente auch mit einbeziehen (die mit include_in_export)
-        settlement_attachments = db.query(Document).filter(
-            Document.settlement_id == result.settlement_id,
-            Document.settlement_result_id == None,  # Nur Settlement-weite
-            Document.include_in_export == True
-        ).order_by(Document.upload_date).all()
+        settlement_attachments = (
+            db.query(Document)
+            .filter(
+                Document.settlement_id == result.settlement_id,
+                Document.settlement_result_id == None,  # Nur Settlement-weite
+                Document.include_in_export == True,
+            )
+            .order_by(Document.upload_date)
+            .all()
+        )
 
         attachments = list(settlement_attachments) + list(unit_attachments)
 
         # Vermieter-Daten aus Einstellungen laden
         landlord = {
-            'name': get_setting(db, 'company_name'),
-            'street': get_setting(db, 'company_street'),
-            'postal_code': get_setting(db, 'company_postal_code'),
-            'city': get_setting(db, 'company_city'),
+            "name": get_setting(db, "company_name"),
+            "street": get_setting(db, "company_street"),
+            "postal_code": get_setting(db, "company_postal_code"),
+            "city": get_setting(db, "company_city"),
         }
 
         # Signatur-Daten für Template
@@ -436,7 +481,7 @@ class PDFGenerator:
             landlord=landlord,
             signature_area=signature_area,
             signature_image=signature_image,
-            # Zusätzliche Info für Einzel-PDF
+            period_months=float(period_months),
             is_single_unit=True,
             unit_notes=result.notes,
         )
@@ -469,13 +514,12 @@ class PDFGenerator:
                 unit_label = result.unit.designation
                 pdf_bytes = signing_service.apply_signature(
                     pdf_bytes,
-                    reason=f"Nebenkostenabrechnung {period_label} - {unit_label}"
+                    reason=f"Nebenkostenabrechnung {period_label} - {unit_label}",
                 )
         elif sig_type == "NONE" and self.legacy_signing_service:
             period_label = f"{settlement.period_start.strftime('%d.%m.%Y')} - {settlement.period_end.strftime('%d.%m.%Y')}"
             pdf_bytes = self.legacy_signing_service.apply_signature(
-                pdf_bytes,
-                reason=f"Nebenkostenabrechnung {period_label}"
+                pdf_bytes, reason=f"Nebenkostenabrechnung {period_label}"
             )
 
         return pdf_bytes
