@@ -173,7 +173,7 @@ class PDFGenerator:
             landlord=landlord,
             signature_area=signature_area,
             signature_image=signature_image,
-            period_months=float(period_months),
+            period_months=period_months,
         )
 
         # CSS laden
