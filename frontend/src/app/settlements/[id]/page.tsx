@@ -6,6 +6,7 @@ import {
     useSettlement,
     useDeleteSettlement,
     useFinalizeSettlement,
+    useCalculateSettlement,
     useCopySettlement,
     useUpdateSettlement,
 } from "@/hooks/useSettlements";
@@ -55,6 +56,7 @@ import {
     Receipt,
     Home,
     StickyNote,
+    Calculator,
 } from "lucide-react";
 import {
     formatDate,
@@ -134,6 +136,7 @@ export default function SettlementDetailPage({
     const updateDocument = useUpdateDocument();
     const deleteSettlement = useDeleteSettlement();
     const finalizeSettlement = useFinalizeSettlement();
+    const calculateSettlement = useCalculateSettlement();
     const copySettlement = useCopySettlement();
     const updateSettlement = useUpdateSettlement();
     const createInvoice = useCreateInvoice();
@@ -476,21 +479,40 @@ export default function SettlementDetailPage({
                     </Button>
                     {(settlement.status === "DRAFT" ||
                         settlement.status === "CALCULATED") && (
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowFinalizeModal(true)}
-                            disabled={
-                                finalizeSettlement.isPending ||
-                                !invoices?.length
-                            }
-                        >
-                            {finalizeSettlement.isPending ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <Lock className="mr-2 h-4 w-4" />
-                            )}
-                            Finalisieren
-                        </Button>
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={() => calculateSettlement.mutate(id)}
+                                disabled={
+                                    calculateSettlement.isPending ||
+                                    !invoices?.length
+                                }
+                            >
+                                {calculateSettlement.isPending ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Calculator className="mr-2 h-4 w-4" />
+                                )}
+                                {calculateSettlement.isPending
+                                    ? "Berechne..."
+                                    : "Berechnen"}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowFinalizeModal(true)}
+                                disabled={
+                                    finalizeSettlement.isPending ||
+                                    !invoices?.length
+                                }
+                            >
+                                {finalizeSettlement.isPending ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Lock className="mr-2 h-4 w-4" />
+                                )}
+                                Finalisieren
+                            </Button>
+                        </>
                     )}
                     {settlement.status === "FINALIZED" && (
                         <Button
